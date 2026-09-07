@@ -12,53 +12,25 @@ type BatchNote = { id: string; batchId: string; date: string; type: string; note
 type MortalityRecord = { id: string; batchId: string; date: string; headsLost: number; note: string }
 type FarmData = { batches: Array<{ id: string; batch_code: string; species: Species; purchase_date: string; supplier_name: string | null; starting_headcount: number; target_weight_kg: number; purchase_cost_php: number; status: Batch['status'] }>; performance: Array<{ id: string; batch_id: string; week_ending: string; average_weight_kg: number; feed_bags: number | null; bag_weight_kg: number }>; mortality: Array<{ id: string; batch_id: string; loss_date: string; heads_lost: number; note: string | null }>; notes: Array<{ id: string; batch_id: string; note_date: string; note_type: string; note: string }>; expenses: Array<{ id: string; expense_date: string; category: ExpenseCategory; supplier_name: string | null; batch_id: string | null; description: string; amount_php: number; employee_name: string | null; bonus_amount_php: number }>; estimates: Array<{ batch_id: string; estimated_price_per_kg_php: number; estimated_weight_per_head_kg: number }> }
 
-const initialBatches: Batch[] = [
-  { id: 'PIG-20260814', species: 'Pig', purchaseDate: '2026-08-14', supplier: 'San Miguel Hog Farm', headcount: 10, headsLost: 0, averageWeight: 42.8, targetWeight: 90, fcr: 2.71, totalCost: 86400, status: 'Active' },
-  { id: 'CHK-20260822', species: 'Chicken', purchaseDate: '2026-08-05', supplier: 'Bulacan Poultry Supply', headcount: 100, headsLost: 2, averageWeight: 0.86, targetWeight: 1.8, fcr: 1.58, totalCost: 17820, status: 'Active' },
-  { id: 'CHK-20260728', species: 'Chicken', purchaseDate: '2026-07-28', supplier: 'Bulacan Poultry Supply', headcount: 96, headsLost: 4, averageWeight: 1.46, targetWeight: 1.8, fcr: 1.67, totalCost: 17000, status: 'Active' },
-  { id: 'PIG-20260412', species: 'Pig', purchaseDate: '2026-04-12', supplier: 'San Miguel Hog Farm', headcount: 10, headsLost: 1, averageWeight: 91.2, targetWeight: 90, fcr: 2.83, totalCost: 127600, profit: 31400, status: 'Completed' },
-  { id: 'PIG-20260119', species: 'Pig', purchaseDate: '2026-01-19', supplier: 'Tarlac Growers Cooperative', headcount: 14, headsLost: 1, averageWeight: 94.6, targetWeight: 90, fcr: 2.76, totalCost: 176400, profit: 50600, status: 'Completed' },
-  { id: 'CHK-20260516', species: 'Chicken', purchaseDate: '2026-05-16', supplier: 'Bulacan Poultry Supply', headcount: 180, headsLost: 6, averageWeight: 1.89, targetWeight: 1.8, fcr: 1.61, totalCost: 68400, profit: 22100, status: 'Completed' },
-  { id: 'CHK-20260308', species: 'Chicken', purchaseDate: '2026-03-08', supplier: 'North Luzon Hatchery', headcount: 150, headsLost: 3, averageWeight: 1.82, targetWeight: 1.8, fcr: 1.57, totalCost: 57120, profit: 18320, status: 'Completed' },
-]
-const performanceSamples: Record<string, PerformanceSample[]> = {
-  'PIG-20260814': [{ averageWeight: 30, feedBags: 1.25 }, { averageWeight: 34.2, feedBags: 1.75 }, { averageWeight: 38.5, feedBags: 1.75 }, { averageWeight: 42.8, feedBags: 2.25 }],
-  'CHK-20260822': [{ averageWeight: 0.04, feedBags: 0.25 }, { averageWeight: 0.19, feedBags: 0.5 }, { averageWeight: 0.46, feedBags: 0.75 }, { averageWeight: 0.86, feedBags: 1 }],
-  'CHK-20260728': [{ averageWeight: 0.04, feedBags: 0.25 }, { averageWeight: 0.18, feedBags: 0.5 }, { averageWeight: 0.42, feedBags: 0.75 }, { averageWeight: 0.72, feedBags: 1 }, { averageWeight: 1.08, feedBags: 1 }, { averageWeight: 1.46, feedBags: 1 }],
-}
-const initialMortalityRecords: MortalityRecord[] = [
-  { id: 'LOSS-001', batchId: 'CHK-20260822', date: '2026-08-17', headsLost: 1, note: 'Weak chick found during morning check' },
-  { id: 'LOSS-002', batchId: 'CHK-20260822', date: '2026-08-24', headsLost: 1, note: 'Loss recorded after heavy rain' },
-  { id: 'LOSS-003', batchId: 'CHK-20260728', date: '2026-08-02', headsLost: 2, note: 'Early brooding losses' },
-  { id: 'LOSS-004', batchId: 'CHK-20260728', date: '2026-08-16', headsLost: 1, note: 'Small bird found weak during health check' },
-  { id: 'LOSS-005', batchId: 'CHK-20260728', date: '2026-08-27', headsLost: 1, note: 'Loss recorded after heat stress observation' },
-]
-const initialExpenses: Expense[] = [
-  { id: 'EXP-001', date: '2026-09-02', category: 'Gas', supplier: 'Petron Plaridel', batchId: 'Farm overhead', description: 'Pickup fuel for supply run', amount: 850 },
-  { id: 'EXP-002', date: '2026-09-01', category: 'Feed', supplier: 'Bulacan Agri Trading', batchId: 'CHK-20260822', description: 'Broiler grower feed, 4 bags', amount: 1792 },
-  { id: 'EXP-003', date: '2026-08-30', category: 'Medicine', supplier: 'Meycauayan Vet Supply', batchId: 'CHK-20260728', description: 'Vitamins and electrolytes', amount: 1260 },
-  { id: 'EXP-004', date: '2026-08-29', category: 'Materials', supplier: 'Ace Hardware', batchId: 'Farm overhead', description: 'Bedding and pen repairs', amount: 2140 },
-  { id: 'EXP-005', date: '2026-08-27', category: 'Feed', supplier: 'Bulacan Agri Trading', batchId: 'PIG-20260814', description: 'Hog grower feed, 6 bags', amount: 3840 },
-  { id: 'EXP-006', date: '2026-08-26', category: 'Salary', supplier: 'Farm workers', batchId: 'Farm overhead', description: 'Weekly worker payroll', amount: 3200, employeeName: 'Kuya Rowel', bonusAmount: 200 },
-]
 const php = new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP', maximumFractionDigits: 0 })
 const formatDate = (date: string) => new Intl.DateTimeFormat('en-PH', { month: 'short', day: 'numeric', year: 'numeric' }).format(new Date(`${date}T00:00:00`))
 const batchDays = (date: string) => Math.max(1, Math.round((Date.now() - new Date(`${date}T00:00:00`).getTime()) / 86400000))
 
 function App() {
-  const [batches, setBatches] = useState(initialBatches)
-  const [userName, setUserName] = useState('Mark')
+  const [batches, setBatches] = useState<Batch[]>([])
+  const [userName, setUserName] = useState('')
   const [activeEntry, setActiveEntry] = useState<EntryKind | null>(null)
   const [section, setSection] = useState('Dashboard')
   const [notice, setNotice] = useState('')
   const [showBatchForm, setShowBatchForm] = useState(false)
-  const [expenses, setExpenses] = useState(initialExpenses)
+  const [expenses, setExpenses] = useState<Expense[]>([])
   const [showExpenseForm, setShowExpenseForm] = useState(false)
   const [selectedBatch, setSelectedBatch] = useState<Batch | null>(null)
   const [batchNotes, setBatchNotes] = useState<BatchNote[]>([])
-  const [mortalityRecords, setMortalityRecords] = useState<MortalityRecord[]>(initialMortalityRecords)
-  const [performanceByBatch, setPerformanceByBatch] = useState(performanceSamples)
+  const [mortalityRecords, setMortalityRecords] = useState<MortalityRecord[]>([])
+  const [performanceByBatch, setPerformanceByBatch] = useState<Record<string, PerformanceSample[]>>({})
   const [saleEstimates, setSaleEstimates] = useState<Record<string, { price: number; weight: number }>>({})
+  const [dataLoadState, setDataLoadState] = useState<'loading' | 'ready' | 'error'>('loading')
   useEffect(() => {
     const loadAuthenticatedUser = async () => {
       try {
@@ -76,9 +48,8 @@ function App() {
     const loadFarmData = async () => {
       try {
         const response = await fetch('/api/farm-data')
-        if (!response.ok) return
+        if (!response.ok) throw new Error('Farm data request failed.')
         const data = await response.json() as FarmData
-        if (!data.batches.length) return
         const lossesByBatch = new Map<string, number>()
         data.mortality.forEach((record) => lossesByBatch.set(record.batch_id, (lossesByBatch.get(record.batch_id) ?? 0) + Number(record.heads_lost)))
         const expensesByBatch = new Map<string, number>()
@@ -108,8 +79,9 @@ function App() {
         setMortalityRecords(data.mortality.map((record) => ({ id: record.id, batchId: batchCodes.get(record.batch_id) ?? record.batch_id, date: record.loss_date.slice(0, 10), headsLost: Number(record.heads_lost), note: record.note ?? '' })))
         setBatchNotes(data.notes.map((note) => ({ id: note.id, batchId: batchCodes.get(note.batch_id) ?? note.batch_id, date: note.note_date.slice(0, 10), type: note.note_type, note: note.note })))
         setExpenses(data.expenses.map((expense) => ({ id: expense.id, date: expense.expense_date.slice(0, 10), category: expense.category, supplier: expense.supplier_name ?? 'Farm overhead', batchId: expense.batch_id ? batchCodes.get(expense.batch_id) ?? expense.batch_id : 'Farm overhead', description: expense.description, amount: Number(expense.amount_php), employeeName: expense.employee_name ?? undefined, bonusAmount: Number(expense.bonus_amount_php) })))
+        setDataLoadState('ready')
       } catch {
-        // The local Vite preview has no Azure API, so it continues with sample data.
+        setDataLoadState('error')
       }
     }
     void loadFarmData()
@@ -231,8 +203,10 @@ function App() {
   return <div className="farm-app">
     <aside className="sidebar"><a className="wordmark" href="#dashboard" onClick={() => setSection('Dashboard')}><span>F</span>FarmIVAll</a><p className="farm-location">Bulacan, Philippines</p><nav aria-label="Farm sections">{['Dashboard', 'Batches', 'Performance', 'Feed inventory', 'Expenses', 'Sales', 'Reports'].map((item) => <button key={item} type="button" className={section === item ? 'side-link selected' : 'side-link'} onClick={() => setSection(item)}>{item}</button>)}</nav><div className="sidebar-footer"><span className="sync-dot" /> All changes synced<br /><small>Last backup: today, 8:42 AM</small></div></aside>
     <main className="workspace">
-      <header className="page-header"><div><p className="date-label">Tuesday, September 2, 2026</p><h1>{section === 'Batches' ? 'Livestock batches' : section === 'Performance' ? 'Batch performance' : section === 'Expenses' ? 'Farm expenses' : `Good morning, ${userName}.`}</h1></div><div className="header-actions"><span className="offline-status">Online and synced</span><button className="profile-button" type="button" aria-label="Open account menu">{userName.charAt(0).toUpperCase()}</button></div></header>
+      <header className="page-header"><div><p className="date-label">Tuesday, September 2, 2026</p><h1>{section === 'Batches' ? 'Livestock batches' : section === 'Performance' ? 'Batch performance' : section === 'Expenses' ? 'Farm expenses' : userName ? `Good morning, ${userName}.` : 'Good morning.'}</h1></div><div className="header-actions"><span className="offline-status">Online and synced</span><button className="profile-button" type="button" aria-label="Open account menu">{userName.charAt(0).toUpperCase() || 'F'}</button></div></header>
       {notice && <div className="notice" role="status"><span>Saved</span>{notice}<button type="button" onClick={() => setNotice('')}>Dismiss</button></div>}
+      {dataLoadState === 'loading' && <div className="notice" role="status"><span>Loading</span>Loading live farm records from PostgreSQL.</div>}
+      {dataLoadState === 'error' && <div className="notice" role="alert"><span>Unavailable</span>Live farm records could not be loaded. Check the database connection and refresh the page.</div>}
       {section === 'Batches' ? <BatchesPage batches={batches} selectedBatch={selectedBatch} onAddBatch={() => setShowBatchForm(true)} onOpenBatch={setSelectedBatch} /> : section === 'Performance' ? <PerformancePanel batches={batches} expenses={expenses} batchNotes={batchNotes} mortalityRecords={mortalityRecords} performanceByBatch={performanceByBatch} saleEstimates={saleEstimates} onAddWeight={() => setActiveEntry('Weekly weight check')} onAddNote={() => setActiveEntry('Batch note')} onSaveEstimate={saveSaleEstimate} /> : section === 'Expenses' ? <ExpensesPage expenses={expenses} onAddExpense={() => setShowExpenseForm(true)} /> : <Dashboard batches={batches} expenses={expenses} totalAnimals={totalAnimals} totalCost={totalCost} onEntry={(kind) => kind === 'Expense' ? setShowExpenseForm(true) : setActiveEntry(kind)} onBatches={() => setSection('Batches')} onOpenBatch={openBatch} />}
     </main>
     {activeEntry && <EntryModal activeEntry={activeEntry} batches={batches} onClose={() => setActiveEntry(null)} onSave={saveEntry} />}
