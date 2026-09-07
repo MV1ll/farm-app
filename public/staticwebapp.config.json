@@ -20,6 +20,10 @@
       "statusCode": 302
     }
   },
+  "mimeTypes": {
+    ".js": "application/javascript",
+    ".css": "text/css"
+  },
   "auth": {
     "identityProviders": {
       "azureActiveDirectory": {
