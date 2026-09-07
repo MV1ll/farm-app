@@ -1,0 +1,242 @@
+import { useState } from 'react'
+import type { FormEvent } from 'react'
+import './App.css'
+
+type Species = 'Pig' | 'Chicken'
+type EntryKind = 'Weekly feed use' | 'Mortality' | 'Weekly weight check' | 'Batch note' | 'Expense' | 'Sale'
+type Batch = { id: string; species: Species; purchaseDate: string; supplier: string; headcount: number; headsLost: number; averageWeight: number; targetWeight: number; fcr: number; totalCost: number; profit?: number; status: 'Active' | 'Completed' }
+type ExpenseCategory = 'Feed' | 'Medicine' | 'Materials' | 'Gas' | 'Salary'
+ type Expense = { id: string; date: string; category: ExpenseCategory; supplier: string; batchId: string; description: string; amount: number; employeeName?: string; bonusAmount?: number }
+type PerformanceSample = { averageWeight: number; feedBags: number }
+type BatchNote = { id: string; batchId: string; date: string; type: string; note: string }
+type MortalityRecord = { id: string; batchId: string; date: string; headsLost: number; note: string }
+
+const initialBatches: Batch[] = [
+  { id: 'PIG-20260814', species: 'Pig', purchaseDate: '2026-08-14', supplier: 'San Miguel Hog Farm', headcount: 10, headsLost: 0, averageWeight: 42.8, targetWeight: 90, fcr: 2.71, totalCost: 86400, status: 'Active' },
+  { id: 'CHK-20260822', species: 'Chicken', purchaseDate: '2026-08-05', supplier: 'Bulacan Poultry Supply', headcount: 100, headsLost: 2, averageWeight: 0.86, targetWeight: 1.8, fcr: 1.58, totalCost: 17820, status: 'Active' },
+  { id: 'CHK-20260728', species: 'Chicken', purchaseDate: '2026-07-28', supplier: 'Bulacan Poultry Supply', headcount: 96, headsLost: 4, averageWeight: 1.46, targetWeight: 1.8, fcr: 1.67, totalCost: 17000, status: 'Active' },
+  { id: 'PIG-20260412', species: 'Pig', purchaseDate: '2026-04-12', supplier: 'San Miguel Hog Farm', headcount: 10, headsLost: 1, averageWeight: 91.2, targetWeight: 90, fcr: 2.83, totalCost: 127600, profit: 31400, status: 'Completed' },
+  { id: 'PIG-20260119', species: 'Pig', purchaseDate: '2026-01-19', supplier: 'Tarlac Growers Cooperative', headcount: 14, headsLost: 1, averageWeight: 94.6, targetWeight: 90, fcr: 2.76, totalCost: 176400, profit: 50600, status: 'Completed' },
+  { id: 'CHK-20260516', species: 'Chicken', purchaseDate: '2026-05-16', supplier: 'Bulacan Poultry Supply', headcount: 180, headsLost: 6, averageWeight: 1.89, targetWeight: 1.8, fcr: 1.61, totalCost: 68400, profit: 22100, status: 'Completed' },
+  { id: 'CHK-20260308', species: 'Chicken', purchaseDate: '2026-03-08', supplier: 'North Luzon Hatchery', headcount: 150, headsLost: 3, averageWeight: 1.82, targetWeight: 1.8, fcr: 1.57, totalCost: 57120, profit: 18320, status: 'Completed' },
+]
+const performanceSamples: Record<string, PerformanceSample[]> = {
+  'PIG-20260814': [{ averageWeight: 30, feedBags: 1.25 }, { averageWeight: 34.2, feedBags: 1.75 }, { averageWeight: 38.5, feedBags: 1.75 }, { averageWeight: 42.8, feedBags: 2.25 }],
+  'CHK-20260822': [{ averageWeight: 0.04, feedBags: 0.25 }, { averageWeight: 0.19, feedBags: 0.5 }, { averageWeight: 0.46, feedBags: 0.75 }, { averageWeight: 0.86, feedBags: 1 }],
+  'CHK-20260728': [{ averageWeight: 0.04, feedBags: 0.25 }, { averageWeight: 0.18, feedBags: 0.5 }, { averageWeight: 0.42, feedBags: 0.75 }, { averageWeight: 0.72, feedBags: 1 }, { averageWeight: 1.08, feedBags: 1 }, { averageWeight: 1.46, feedBags: 1 }],
+}
+const initialMortalityRecords: MortalityRecord[] = [
+  { id: 'LOSS-001', batchId: 'CHK-20260822', date: '2026-08-17', headsLost: 1, note: 'Weak chick found during morning check' },
+  { id: 'LOSS-002', batchId: 'CHK-20260822', date: '2026-08-24', headsLost: 1, note: 'Loss recorded after heavy rain' },
+  { id: 'LOSS-003', batchId: 'CHK-20260728', date: '2026-08-02', headsLost: 2, note: 'Early brooding losses' },
+  { id: 'LOSS-004', batchId: 'CHK-20260728', date: '2026-08-16', headsLost: 1, note: 'Small bird found weak during health check' },
+  { id: 'LOSS-005', batchId: 'CHK-20260728', date: '2026-08-27', headsLost: 1, note: 'Loss recorded after heat stress observation' },
+]
+const initialExpenses: Expense[] = [
+  { id: 'EXP-001', date: '2026-09-02', category: 'Gas', supplier: 'Petron Plaridel', batchId: 'Farm overhead', description: 'Pickup fuel for supply run', amount: 850 },
+  { id: 'EXP-002', date: '2026-09-01', category: 'Feed', supplier: 'Bulacan Agri Trading', batchId: 'CHK-20260822', description: 'Broiler grower feed, 4 bags', amount: 1792 },
+  { id: 'EXP-003', date: '2026-08-30', category: 'Medicine', supplier: 'Meycauayan Vet Supply', batchId: 'CHK-20260728', description: 'Vitamins and electrolytes', amount: 1260 },
+  { id: 'EXP-004', date: '2026-08-29', category: 'Materials', supplier: 'Ace Hardware', batchId: 'Farm overhead', description: 'Bedding and pen repairs', amount: 2140 },
+  { id: 'EXP-005', date: '2026-08-27', category: 'Feed', supplier: 'Bulacan Agri Trading', batchId: 'PIG-20260814', description: 'Hog grower feed, 6 bags', amount: 3840 },
+  { id: 'EXP-006', date: '2026-08-26', category: 'Salary', supplier: 'Farm workers', batchId: 'Farm overhead', description: 'Weekly worker payroll', amount: 3200, employeeName: 'Kuya Rowel', bonusAmount: 200 },
+]
+const php = new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP', maximumFractionDigits: 0 })
+const formatDate = (date: string) => new Intl.DateTimeFormat('en-PH', { month: 'short', day: 'numeric', year: 'numeric' }).format(new Date(`${date}T00:00:00`))
+const batchDays = (date: string) => Math.max(1, Math.round((Date.now() - new Date(`${date}T00:00:00`).getTime()) / 86400000))
+
+function App() {
+  const [batches, setBatches] = useState(initialBatches)
+  const [activeEntry, setActiveEntry] = useState<EntryKind | null>(null)
+  const [section, setSection] = useState('Dashboard')
+  const [notice, setNotice] = useState('')
+  const [showBatchForm, setShowBatchForm] = useState(false)
+  const [expenses, setExpenses] = useState(initialExpenses)
+  const [showExpenseForm, setShowExpenseForm] = useState(false)
+  const [selectedBatch, setSelectedBatch] = useState<Batch | null>(null)
+  const [batchNotes, setBatchNotes] = useState<BatchNote[]>([])
+  const [mortalityRecords, setMortalityRecords] = useState<MortalityRecord[]>(initialMortalityRecords)
+  const totalAnimals = batches.filter((batch) => batch.status === 'Active').reduce((total, batch) => total + batch.headcount, 0)
+  const totalCost = batches.filter((batch) => batch.status === 'Active').reduce((total, batch) => total + batch.totalCost, 0)
+
+  const addBatch = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    const form = new FormData(event.currentTarget)
+    const species = form.get('species') as Species
+    const purchaseDate = String(form.get('purchaseDate'))
+    const prefix = species === 'Pig' ? 'PIG' : 'CHK'
+    const baseId = `${prefix}-${purchaseDate.replaceAll('-', '')}`
+    const duplicates = batches.filter((batch) => batch.id === baseId || batch.id.startsWith(`${baseId}-`)).length
+    const id = duplicates ? `${baseId}-${String(duplicates + 1).padStart(2, '0')}` : baseId
+    const batch: Batch = {
+      id, species, purchaseDate, supplier: String(form.get('supplier')).trim(),
+      headcount: Number(form.get('headcount')), headsLost: 0, averageWeight: Number(form.get('startingWeight')),
+      targetWeight: Number(form.get('targetWeight')), fcr: 0, totalCost: Number(form.get('purchaseCost')), status: 'Active',
+    }
+    setBatches((current) => [batch, ...current])
+    setShowBatchForm(false)
+    setNotice(`${id} created and saved locally. Add weekly feed and weight records to build its performance history.`)
+  }
+
+  const saveEntry = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    const form = new FormData(event.currentTarget)
+    if (activeEntry === 'Batch note') {
+      const note: BatchNote = { id: `NOTE-${Date.now()}`, batchId: String(form.get('batchId')), date: String(form.get('date')), type: String(form.get('noteType')), note: String(form.get('note')).trim() }
+      setBatchNotes((current) => [note, ...current])
+    }
+    if (activeEntry === 'Mortality') {
+      const batchId = String(form.get('batchId'))
+      const headsLost = Number(form.get('value'))
+      const date = String(form.get('date'))
+      const note = String(form.get('note')).trim()
+      setBatches((current) => current.map((batch) => batch.id === batchId ? { ...batch, headsLost: batch.headsLost + headsLost } : batch))
+      setMortalityRecords((current) => [{ id: `LOSS-${Date.now()}`, batchId, date, headsLost, note }, ...current])
+      setNotice(`${headsLost} head${headsLost === 1 ? '' : 's'} lost recorded for ${batchId}.`)
+    } else {
+      setNotice(`${activeEntry} saved locally. It will sync when a connection is available.`)
+    }
+    setActiveEntry(null)
+  }
+  const openBatch = (batch: Batch) => { setSelectedBatch(batch); setSection('Batches') }
+  const addExpense = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    const form = new FormData(event.currentTarget)
+    const category = form.get('category') as ExpenseCategory
+    const date = String(form.get('date'))
+    const supplier = String(form.get('supplier')).trim()
+    const batchId = String(form.get('batchId'))
+    const description = String(form.get('description')).trim()
+    const salaryEmployees = ['Kuya Rowel', 'Inek', 'Joshua']
+    const newExpenses = category === 'Salary'
+        ? salaryEmployees.flatMap((employeeName) => {
+          const baseAmount = Number(form.get(`salary-${employeeName}`))
+          const bonusAmount = Number(form.get(`bonus-${employeeName}`))
+          const amount = baseAmount + bonusAmount
+          return amount > 0 ? [{ id: `EXP-${Date.now()}-${employeeName}`, date, category, supplier, batchId, description, amount, employeeName, bonusAmount }] : []
+        })
+      : [{ id: `EXP-${Date.now()}`, date, category, supplier, batchId, description, amount: Number(form.get('amount')) }]
+    setExpenses((current) => [...newExpenses, ...current])
+    setShowExpenseForm(false)
+    const savedAmount = newExpenses.reduce((total, expense) => total + expense.amount, 0)
+    setNotice(`${category} expense of ${php.format(savedAmount)} saved locally.`)
+  }
+
+  return <div className="farm-app">
+    <aside className="sidebar"><a className="wordmark" href="#dashboard" onClick={() => setSection('Dashboard')}><span>H</span>Handog Farm</a><p className="farm-location">Bulacan, Philippines</p><nav aria-label="Farm sections">{['Dashboard', 'Batches', 'Performance', 'Feed inventory', 'Expenses', 'Sales', 'Reports'].map((item) => <button key={item} type="button" className={section === item ? 'side-link selected' : 'side-link'} onClick={() => setSection(item)}>{item}</button>)}</nav><div className="sidebar-footer"><span className="sync-dot" /> All changes synced<br /><small>Last backup: today, 8:42 AM</small></div></aside>
+    <main className="workspace">
+      <header className="page-header"><div><p className="date-label">Tuesday, September 2, 2026</p><h1>{section === 'Batches' ? 'Livestock batches' : section === 'Performance' ? 'Batch performance' : section === 'Expenses' ? 'Farm expenses' : 'Good morning, Mark.'}</h1></div><div className="header-actions"><span className="offline-status">Online and synced</span><button className="profile-button" type="button" aria-label="Open account menu">M</button></div></header>
+      {notice && <div className="notice" role="status"><span>Saved</span>{notice}<button type="button" onClick={() => setNotice('')}>Dismiss</button></div>}
+      {section === 'Batches' ? <BatchesPage batches={batches} selectedBatch={selectedBatch} onAddBatch={() => setShowBatchForm(true)} onOpenBatch={setSelectedBatch} /> : section === 'Performance' ? <PerformancePanel batches={batches} expenses={expenses} batchNotes={batchNotes} mortalityRecords={mortalityRecords} onAddWeight={() => setActiveEntry('Weekly weight check')} onAddNote={() => setActiveEntry('Batch note')} /> : section === 'Expenses' ? <ExpensesPage expenses={expenses} onAddExpense={() => setShowExpenseForm(true)} /> : <Dashboard batches={batches} expenses={expenses} totalAnimals={totalAnimals} totalCost={totalCost} onEntry={setActiveEntry} onBatches={() => setSection('Batches')} onOpenBatch={openBatch} />}
+    </main>
+    {activeEntry && <EntryModal activeEntry={activeEntry} batches={batches} onClose={() => setActiveEntry(null)} onSave={saveEntry} />}
+    {showBatchForm && <BatchForm onClose={() => setShowBatchForm(false)} onSubmit={addBatch} />}
+    {showExpenseForm && <ExpenseForm batches={batches} onClose={() => setShowExpenseForm(false)} onSubmit={addExpense} />}
+  </div>
+}
+
+function Dashboard({ batches, expenses, totalAnimals, totalCost, onEntry, onBatches, onOpenBatch }: { batches: Batch[]; expenses: Expense[]; totalAnimals: number; totalCost: number; onEntry: (kind: EntryKind) => void; onBatches: () => void; onOpenBatch: (batch: Batch) => void }) {
+  const activeBatches = batches.filter((batch) => batch.status === 'Active')
+  const completedBatches = batches.filter((batch) => batch.status === 'Completed')
+  const pigHeads = activeBatches.filter((batch) => batch.species === 'Pig').reduce((total, batch) => total + batch.headcount, 0)
+  const chickenHeads = activeBatches.filter((batch) => batch.species === 'Chicken').reduce((total, batch) => total + batch.headcount, 0)
+  const pigCost = activeBatches.filter((batch) => batch.species === 'Pig').reduce((total, batch) => total + batch.totalCost, 0)
+  const chickenCost = activeBatches.filter((batch) => batch.species === 'Chicken').reduce((total, batch) => total + batch.totalCost, 0)
+  const profitYtd = completedBatches.reduce((total, batch) => total + (batch.profit ?? 0), 0)
+  const salesYtd = completedBatches.reduce((total, batch) => total + batch.totalCost + (batch.profit ?? 0), 0)
+  const expensesYtd = expenses.reduce((total, expense) => total + expense.amount, 0)
+  return <><section className="quick-actions" aria-labelledby="quick-actions-title"><div className="section-intro"><p className="section-kicker">Farm record</p><h2 id="quick-actions-title">What happened today?</h2></div><div className="action-row">{(['Weekly feed use', 'Mortality', 'Weekly weight check', 'Expense', 'Sale'] as EntryKind[]).map((kind) => <button className="quick-button" key={kind} type="button" onClick={() => onEntry(kind)}><b>{kind}</b><span>{kind === 'Weekly feed use' ? 'Record bags used' : kind === 'Weekly weight check' ? 'Record weekly weight' : 'Record entry'}</span></button>)}</div></section>
+    <section className="overview-grid" aria-label="Farm overview"><article className="summary-card animals animal-summary"><p>Animals on farm <b>{totalAnimals} heads</b></p><div className="animal-breakdown"><span><b>Pigs</b><em>{pigHeads} heads</em></span><span><b>Chickens</b><em>{chickenHeads} heads</em></span></div><small>Across {activeBatches.length} active batches</small></article><article className="summary-card feed-summary"><p>Feed on hand <b>36 bags</b></p><div className="feed-breakdown"><span><b>Chicken</b><i>Starter <em>5</em></i><i>Grower <em>7</em></i><i>Finisher <em>6</em></i></span><span><b>Pig</b><i>Starter <em>4</em></i><i>Grower <em>9</em></i><i>Finisher <em>5</em></i></span></div></article><article className="summary-card cost-summary"><p>Active batch cost <b>{php.format(totalCost)}</b></p><div className="cost-breakdown"><span><b>Pig batches</b><em>{php.format(pigCost)}</em></span><span><b>Chicken batches</b><em>{php.format(chickenCost)}</em></span></div></article><article className="summary-card ytd-summary"><p>Year to date</p><div className="ytd-breakdown"><span><b>Total sales</b><em>{php.format(salesYtd)}</em></span><span><b>Profit</b><em>{php.format(profitYtd)}</em></span><span><b>Expenses</b><em>{php.format(expensesYtd)}</em></span></div></article><article className="summary-card warning"><p>Needs attention</p><strong>2</strong><span>Check feed stock and weights</span></article></section>
+    <section className="content-layout"><article className="table-panel"><div className="panel-heading"><div><p className="section-kicker">Grow-out</p><h2>Active batches</h2></div><button className="quiet-action" type="button" onClick={onBatches}>View all batches</button></div><BatchTable batches={activeBatches} onOpen={onOpenBatch} /></article><aside className="side-panels"><FeedCard /><article className="performance-card"><p className="section-kicker">Batch watch</p><h2>CHK-20260728</h2><p>Approaching target market weight.</p><div className="performance-value"><strong>1.46 <small>kg</small></strong><span>Target<br /><b>1.80 kg</b></span></div><div className="progress"><span /></div><button type="button" onClick={() => onEntry('Weekly weight check')}>Record weekly weight</button></article></aside></section>
+    <Ledger /></>
+}
+
+function BatchesPage({ batches, onAddBatch, onOpenBatch }: { batches: Batch[]; selectedBatch: Batch | null; onAddBatch: () => void; onOpenBatch: (batch: Batch) => void }) {
+  const [completedFrom, setCompletedFrom] = useState('')
+  const [completedTo, setCompletedTo] = useState('')
+  const activeBatches = batches.filter((batch) => batch.status === 'Active')
+  const completedBatches = batches.filter((batch) => batch.status === 'Completed' && (!completedFrom || batch.purchaseDate >= completedFrom) && (!completedTo || batch.purchaseDate <= completedTo))
+  return <><section className="batches-toolbar"><p className="section-kicker">Grow-out operations</p><button className="primary-action" type="button" onClick={onAddBatch}>Add livestock batch</button></section>
+    <section className="batch-metrics"><span><b>{activeBatches.length}</b> active batches</span><span><b>{activeBatches.filter((batch) => batch.species === 'Pig').length}</b> pig batches</span><span><b>{activeBatches.filter((batch) => batch.species === 'Chicken').length}</b> chicken batches</span></section>
+    <article className="table-panel batches-list"><div className="panel-heading"><div><p className="section-kicker">Current stock</p><h2>All active batches</h2></div><span className="list-note">Select a batch to view its ledger</span></div><BatchTable batches={activeBatches} onOpen={onOpenBatch} /></article>
+    <article className="table-panel completed-list"><div className="panel-heading"><div><p className="section-kicker">History</p><h2>Completed batches</h2></div><div className="date-filter"><label>From<input type="date" value={completedFrom} onChange={(event) => setCompletedFrom(event.target.value)} /></label><label>To<input type="date" value={completedTo} onChange={(event) => setCompletedTo(event.target.value)} /></label></div></div><BatchTable batches={completedBatches} onOpen={onOpenBatch} showProfit /><p className="filter-note">{completedBatches.length} completed batch{completedBatches.length === 1 ? '' : 'es'} shown. Filter uses the purchase date.</p></article>
+  </>
+}
+
+function ExpensesPage({ expenses, onAddExpense }: { expenses: Expense[]; onAddExpense: () => void }) {
+  const [from, setFrom] = useState('2026-08-01')
+  const [to, setTo] = useState('2026-09-02')
+  const [category, setCategory] = useState<'All' | ExpenseCategory>('All')
+  const [assignedTo, setAssignedTo] = useState('All')
+  const assignments = ['All', ...Array.from(new Set(expenses.map((expense) => expense.batchId)))]
+  const visibleExpenses = expenses.filter((expense) => expense.date >= from && expense.date <= to && (category === 'All' || expense.category === category) && (assignedTo === 'All' || expense.batchId === assignedTo))
+  const total = visibleExpenses.reduce((sum, expense) => sum + expense.amount, 0)
+  const totalByCategory = (type: ExpenseCategory) => visibleExpenses.filter((expense) => expense.category === type).reduce((sum, expense) => sum + expense.amount, 0)
+  return <><section className="expenses-toolbar"><div className="expense-filters"><label>From<input type="date" value={from} onChange={(event) => setFrom(event.target.value)} /></label><label>To<input type="date" value={to} onChange={(event) => setTo(event.target.value)} /></label><label>Category<select value={category} onChange={(event) => setCategory(event.target.value as 'All' | ExpenseCategory)}><option>All</option><option>Feed</option><option>Medicine</option><option>Materials</option><option>Gas</option><option>Salary</option></select></label><label>Assigned to<select value={assignedTo} onChange={(event) => setAssignedTo(event.target.value)}>{assignments.map((assignment) => <option key={assignment}>{assignment}</option>)}</select></label></div><button className="primary-action" type="button" onClick={onAddExpense}>Add expense</button></section>
+    <section className="expense-summary" aria-label="Expense summary"><article><p>Total expenses</p><strong>{php.format(total)}</strong><span>{visibleExpenses.length} records in selected period</span></article>{(['Feed', 'Medicine', 'Materials', 'Gas', 'Salary'] as ExpenseCategory[]).map((type) => <article key={type}><p>{type}</p><strong>{php.format(totalByCategory(type))}</strong><span>{visibleExpenses.filter((expense) => expense.category === type).length} records</span></article>)}</section>
+    <article className="table-panel expense-list"><div className="panel-heading"><div><p className="section-kicker">Expense ledger</p><h2>Recorded expenses</h2></div><span className="list-note">Amounts are in Philippine pesos</span></div><div className="expense-table" role="table" aria-label="Expense ledger"><div className="expense-head" role="row"><span>Date</span><span>Category</span><span>Supplier</span><span>Assigned to</span><span>Description</span><span>Employee</span><span>Bonus / tips</span><span>Amount</span></div>{visibleExpenses.map((expense) => <div className="expense-row" role="row" key={expense.id}><span>{formatDate(expense.date)}</span><span><i className={`expense-tag ${expense.category.toLowerCase()}`}>{expense.category}</i></span><span>{expense.supplier}</span><span>{expense.batchId}</span><span>{expense.description}</span><span>{expense.employeeName ?? '-'}</span><span>{expense.category === 'Salary' ? php.format(expense.bonusAmount ?? 0) : '-'}</span><span>{php.format(expense.amount)}</span></div>)}</div><p className="filter-note">{visibleExpenses.length} expense{visibleExpenses.length === 1 ? '' : 's'} shown.</p></article>
+  </>
+}
+
+function BatchTable({ batches, onOpen, showProfit = false }: { batches: Batch[]; onOpen: (batch: Batch) => void; showProfit?: boolean }) {
+  return <div className={showProfit ? 'batch-table with-profit' : 'batch-table'} role="table" aria-label="Livestock batches"><div className="table-head" role="row"><span>Batch</span><span>Status</span><span>Headcount</span><span>Heads lost</span><span>Days raised</span><span>Live weight</span><span>Feed conversion</span><span>Cost to date</span>{showProfit && <span>Profit</span>}</div>{batches.map((batch) => { const progress = Math.round(batch.averageWeight / batch.targetWeight * 100); return <button className="batch-row" type="button" key={batch.id} onClick={() => onOpen(batch)}><span className="batch-name"><i className={batch.species === 'Pig' ? 'species pig' : 'species chicken'}>{batch.species === 'Pig' ? 'P' : 'C'}</i><b>{batch.id}</b><small>Bought {formatDate(batch.purchaseDate)}</small><small>Supplier: {batch.supplier}</small></span><span><i className={batch.status === 'Completed' ? 'batch-status completed' : 'batch-status active'}>{batch.status}</i></span><span>{batch.headcount}<small>heads</small></span><span className={batch.headsLost > 0 ? 'loss-count has-loss' : 'loss-count'}>{batch.headsLost}<small>heads</small></span><span>{batchDays(batch.purchaseDate)}<small>days</small></span><span>{batch.averageWeight}<small>kg avg. · {progress}% target</small></span><span>{batch.fcr || 'Pending'}<small>FCR</small></span><span>{php.format(batch.totalCost)}<small>PHP</small></span>{showProfit && <span className="profit-value">{php.format(batch.profit ?? 0)}<small>PHP</small></span>}</button> })}</div>
+}
+
+function FeedCard() { return <article className="feed-card"><div className="panel-heading"><div><p className="section-kicker">Inventory</p><h2>Feed stock</h2></div><button className="quiet-action" type="button">Manage</button></div>{[['Hog grower', '62%', '18 bags', ''], ['Broiler finisher', '23%', '6 bags', 'low'], ['Broiler starter', '45%', '12 bags', '']].map(([name, width, amount, state]) => <div className={`stock-line ${state}`} key={name}><b>{name}</b><span><i style={{ width }} /></span><em>{amount}</em></div>)}<p className="stock-warning">Broiler finisher is below your 10 bag minimum.</p></article> }
+function Ledger() { return <section className="ledger-section"><div className="panel-heading"><div><p className="section-kicker">This week</p><h2>Farm ledger</h2></div><button className="quiet-action" type="button">Open report</button></div><div className="ledger-items"><p><time>Mon</time><span className="ledger-mark feed" /><b>4 bags broiler grower recorded</b><small>CHK-20260822 · {php.format(1792)}</small></p><p><time>Tue</time><span className="ledger-mark weight" /><b>Weight sample added</b><small>CHK-20260728 · 1.46 kg average</small></p><p><time>Tue</time><span className="ledger-mark cost" /><b>Diesel expense recorded</b><small>Farm overhead · {php.format(850)}</small></p></div></section> }
+
+function PerformancePanel({ batches, expenses, batchNotes, mortalityRecords, onAddWeight, onAddNote }: { batches: Batch[]; expenses: Expense[]; batchNotes: BatchNote[]; mortalityRecords: MortalityRecord[]; onAddWeight: () => void; onAddNote: () => void }) {
+  const activeBatches = batches.filter((batch) => batch.status === 'Active')
+  const [selectedBatchId, setSelectedBatchId] = useState('CHK-20260728')
+  const [estimatedPrices, setEstimatedPrices] = useState<Record<string, number>>({ 'PIG-20260814': 185, 'CHK-20260822': 120, 'CHK-20260728': 120 })
+  const [estimatedWeights, setEstimatedWeights] = useState<Record<string, number>>({ 'PIG-20260814': 90, 'CHK-20260822': 1.8, 'CHK-20260728': 1.8 })
+  const [selectedDayIndex, setSelectedDayIndex] = useState<number | null>(null)
+  const selectedBatch = activeBatches.find((batch) => batch.id === selectedBatchId) ?? activeBatches[0]
+  if (!selectedBatch) return null
+  const samples = performanceSamples[selectedBatch.id] ?? []
+  const weeks = samples.map((_, index) => index === 0 ? 'Arrival' : `Wk ${index}`)
+  const chartDates = samples.map((_, index) => {
+    const date = new Date(`${selectedBatch.purchaseDate}T00:00:00`)
+    date.setDate(date.getDate() + index * 7)
+    return date.toISOString().slice(0, 10)
+  })
+  const chartPoints = samples.map((sample, index) => ({ x: 58 + index * 517 / Math.max(samples.length - 1, 1), y: 174 - Math.min(sample.averageWeight / selectedBatch.targetWeight, 1) * 151 }))
+  const chartPath = chartPoints.map((point, index) => `${index ? 'L' : 'M'} ${point.x} ${point.y}`).join(' ')
+  const weightTicks = [1, 0.75, 0.5, 0.25, 0].map((ratio) => ({ value: selectedBatch.targetWeight * ratio, y: 23 + (1 - ratio) * 151 }))
+  const formatWeightTick = (weight: number) => `${weight >= 10 ? weight.toFixed(0) : weight.toFixed(2)} kg`
+  const latestFeedBags = samples.at(-1)?.feedBags ?? 0
+  const maxFeedBags = Math.max(...samples.map((sample) => sample.feedBags), 0.25)
+  const targetProgress = Math.round(selectedBatch.averageWeight / selectedBatch.targetWeight * 100)
+  const estimatedPrice = estimatedPrices[selectedBatch.id] ?? (selectedBatch.species === 'Pig' ? 185 : 120)
+  const estimatedWeight = estimatedWeights[selectedBatch.id] ?? selectedBatch.targetWeight
+  const remainingHeads = selectedBatch.headcount - selectedBatch.headsLost
+  const projectedWeight = remainingHeads * estimatedWeight
+  const projectedRevenue = projectedWeight * estimatedPrice
+  const expectedProfit = projectedRevenue - selectedBatch.totalCost
+  const weeklyNotes = samples.map((sample, index) => ({ id: `week-${index}`, date: chartDates[index], type: index === 0 ? 'Starting check' : 'Weekly check', title: `${sample.averageWeight} kg average weight`, detail: index === 0 ? 'Starting weight recorded on arrival' : `${sample.feedBags} of 50 kg feed bags used this week` }))
+  const purchaseNote = { id: 'purchase', date: selectedBatch.purchaseDate, type: 'Purchase', title: `${selectedBatch.headcount} ${selectedBatch.species.toLowerCase()} received`, detail: `Purchased from ${selectedBatch.supplier}` }
+  const expenseNotes = expenses.filter((expense) => expense.batchId === selectedBatch.id).map((expense) => ({ id: expense.id, date: expense.date, type: expense.category, title: `${expense.category} recorded`, detail: `${expense.description} · ${php.format(expense.amount)}` }))
+  const manualNotes = batchNotes.filter((note) => note.batchId === selectedBatch.id).map((note) => ({ id: note.id, date: note.date, type: note.type, title: 'Farm note', detail: note.note }))
+  const lossNotes = mortalityRecords.filter((record) => record.batchId === selectedBatch.id).map((record) => ({ id: record.id, date: record.date, type: 'Mortality', title: `${record.headsLost} head${record.headsLost === 1 ? '' : 's'} lost`, detail: record.note || 'No reason recorded' }))
+  const timeline = [purchaseNote, ...weeklyNotes, ...expenseNotes, ...manualNotes, ...lossNotes].sort((first, second) => first.date.localeCompare(second.date))
+  const selectedDate = selectedDayIndex === null ? null : chartDates[selectedDayIndex]
+  const visibleTimeline = selectedDate ? timeline.filter((note) => note.date === selectedDate) : timeline
+  return <section className="performance-panel">
+    <div className="panel-heading"><div><p className="section-kicker">Weekly performance</p><h2>{selectedBatch.id} growth and feed</h2></div><div className="performance-actions"><label>Active batch<select value={selectedBatch.id} onChange={(event) => { setSelectedBatchId(event.target.value); setSelectedDayIndex(null) }}>{activeBatches.map((batch) => <option key={batch.id} value={batch.id}>{batch.id} · {batch.species}</option>)}</select></label><button className="quiet-action" type="button" onClick={onAddWeight}>Add weekly weight</button><button className="quiet-action" type="button" onClick={onAddNote}>Add note</button></div></div>
+    <div className="performance-metrics"><span><b>{selectedBatch.averageWeight} kg</b>Latest average weight</span><span><b>{latestFeedBags} bags</b>Feed used this week</span><span><b>{selectedBatch.fcr || 'Pending'}</b>Current FCR</span><span><b>{targetProgress}%</b>Target weight reached</span></div>
+    <section className="market-estimate" aria-label="Projected batch sale"><div className="market-estimate-heading"><div><p className="section-kicker">Market estimate</p><h2>Expected sale and profit</h2></div><p>{remainingHeads} remaining {selectedBatch.species === 'Chicken' ? 'birds' : 'heads'} · cost to date {php.format(selectedBatch.totalCost)}</p></div><div className="estimate-inputs"><label>Price per kg<span className="price-input"><b>PHP</b><input aria-label="Estimated price per kg" type="number" min="0" step="1" value={estimatedPrice} onChange={(event) => setEstimatedPrices((current) => ({ ...current, [selectedBatch.id]: Number(event.target.value) }))} /></span></label><label>Sale weight per {selectedBatch.species === 'Chicken' ? 'bird' : 'head'}<span className="price-input"><b>KG</b><input aria-label={`Projected sale weight per ${selectedBatch.species === 'Chicken' ? 'bird' : 'head'}`} type="number" min="0" step="0.01" value={estimatedWeight} onChange={(event) => setEstimatedWeights((current) => ({ ...current, [selectedBatch.id]: Number(event.target.value) }))} /></span></label></div><div className="estimate-outcomes"><div className="estimate-value"><span>Projected sale weight</span><b>{projectedWeight.toLocaleString()} kg</b></div><div className="estimate-value"><span>Projected revenue</span><b>{php.format(projectedRevenue)}</b></div><div className={expectedProfit >= 0 ? 'estimate-value profit-positive' : 'estimate-value profit-negative'}><span>Expected profit</span><b>{php.format(expectedProfit)}</b></div></div></section>
+    <div className="trend-layout"><article><div className="chart-title"><b>Average weight gain</b><span>Target: {selectedBatch.targetWeight.toFixed(2)} kg</span></div><svg className="weight-chart" viewBox="0 0 600 210" role="img" aria-label={`Average ${selectedBatch.species.toLowerCase()} weight history for ${selectedBatch.id}`} onClick={() => setSelectedDayIndex(null)}>{weightTicks.map((tick) => <g key={tick.value}><line className="grid-line" x1="58" y1={tick.y} x2="575" y2={tick.y} /><text className="axis-label" x="51" y={tick.y + 3} textAnchor="end">{formatWeightTick(tick.value)}</text></g>)}<line className="axis-line" x1="58" y1="23" x2="58" y2="174" /><path d={chartPath} /><path className="target-line" d="M 58 23 L 575 23" />{chartPoints.map((point, index) => <circle className={selectedDayIndex === index ? 'selected-point' : undefined} key={weeks[index]} cx={point.x} cy={point.y} r="6" role="button" tabIndex={0} aria-label={`Show notes for ${weeks[index]}, ${formatDate(chartDates[index])}`} onClick={(event) => { event.stopPropagation(); setSelectedDayIndex(index) }} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') setSelectedDayIndex(index) }} />)}{chartPoints.map((point, index) => <text key={weeks[index]} x={point.x} y="201" textAnchor="middle">{weeks[index]}</text>)}</svg></article><article><div className="chart-title"><b>Weekly feed used</b><span>50 kg bags, quarter-bag increments</span></div><div className="feed-chart" style={{ gridTemplateColumns: `repeat(${samples.length}, 1fr)` }}>{samples.map((sample, index) => <div key={weeks[index]}><span style={{ height: `${sample.feedBags / maxFeedBags * 100}%` }}><b>{sample.feedBags}</b></span><small>{weeks[index]}</small></div>)}</div></article></div>
+    <article className="performance-timeline"><div className="panel-heading"><div><p className="section-kicker">Batch record</p><h2>{selectedDate ? `Dates and notes · ${formatDate(selectedDate)}` : 'Dates and notes'}</h2></div>{selectedDate ? <button className="quiet-action" type="button" onClick={() => setSelectedDayIndex(null)}>Show all notes</button> : <span className="list-note">{timeline.length} recorded events</span>}</div><div className="timeline-list">{visibleTimeline.map((note) => <div className="timeline-item" key={note.id}><time>{formatDate(note.date)}</time><span className={`timeline-marker ${note.type.toLowerCase().replaceAll(' ', '-')}`} aria-label={note.type === 'Mortality' ? 'Mortality event' : note.type === 'Medicine' ? 'Medicine event' : undefined}>{note.type === 'Mortality' ? '!' : note.type === 'Medicine' ? '+' : ''}</span><div><i>{note.type}</i><b>{note.title}</b><p>{note.detail}</p></div></div>)}</div></article>
+  </section>
+}
+
+function EntryModal({ activeEntry, batches, onClose, onSave }: { activeEntry: EntryKind; batches: Batch[]; onClose: () => void; onSave: (event: FormEvent<HTMLFormElement>) => void }) { return <div className="modal-backdrop" role="presentation"><section className="entry-modal" role="dialog" aria-modal="true" aria-labelledby="entry-title"><div><p className="section-kicker">New farm record</p><h2 id="entry-title">{activeEntry}</h2><p>{activeEntry === 'Batch note' ? 'Keep a dated record of medicine, health observations, pen work, or anything important for this batch.' : activeEntry === 'Mortality' ? 'Record the number of animals lost. This immediately updates the selected batch headcount record and the weekly performance record.' : activeEntry === 'Weekly feed use' ? 'Record total bags used by this batch during the week, in quarter-bag steps. The configured bag weight converts this to kilograms for FCR.' : activeEntry === 'Weekly weight check' ? 'Record the batch average for the completed week. This drives the growth trend and FCR calculation.' : 'Saved on this device immediately, then synced when online.'}</p></div><button className="close-modal" type="button" onClick={onClose} aria-label="Close entry form">Close</button><form onSubmit={onSave}><label>Batch<select name="batchId" required>{batches.filter((batch) => batch.status === 'Active').map((batch) => <option key={batch.id}>{batch.id}</option>)}</select></label>{activeEntry === 'Batch note' ? <><div className="form-grid"><label>Record type<select name="noteType" defaultValue="Observation"><option>Medicine</option><option>Health check</option><option>Observation</option><option>Pen maintenance</option><option>Reminder</option></select></label><label>Date<input name="date" required type="date" defaultValue="2026-09-02" /></label></div><label>Note<input name="note" required autoFocus placeholder="What happened or what needs attention?" /></label></> : <><div className="form-grid"><label>{activeEntry === 'Expense' ? 'Amount (PHP)' : activeEntry === 'Weekly weight check' ? 'Average weight (kg)' : activeEntry === 'Mortality' ? 'Heads lost' : activeEntry === 'Sale' ? 'Live weight (kg)' : 'Bags used this week'}<input name="value" required min={activeEntry === 'Mortality' ? '1' : '0'} step={activeEntry === 'Weekly feed use' ? '0.25' : activeEntry === 'Mortality' ? '1' : '0.01'} type="number" autoFocus /></label><label>{activeEntry === 'Weekly feed use' || activeEntry === 'Weekly weight check' ? 'Week ending' : 'Date'}<input name="date" required type="date" defaultValue="2026-09-02" /></label></div><label>Note (optional)<input name="note" placeholder="Supplier, reason, or other details" /></label></>}<button className="submit-entry" type="submit">Save {activeEntry}</button></form></section></div> }
+
+function ExpenseForm({ batches, onClose, onSubmit }: { batches: Batch[]; onClose: () => void; onSubmit: (event: FormEvent<HTMLFormElement>) => void }) {
+  const [category, setCategory] = useState<ExpenseCategory>('Feed')
+  const isSalary = category === 'Salary'
+  return <div className="modal-backdrop" role="presentation"><section className="entry-modal payroll-modal" role="dialog" aria-modal="true" aria-labelledby="expense-title"><div><p className="section-kicker">New expense</p><h2 id="expense-title">Record a cost</h2><p>Record the supplier and assign the cost to a batch or farm overhead.</p></div><button className="close-modal" type="button" onClick={onClose} aria-label="Close expense form">Close</button><form onSubmit={onSubmit}><div className="form-grid"><label>Category<select name="category" value={category} onChange={(event) => setCategory(event.target.value as ExpenseCategory)}><option>Feed</option><option>Medicine</option><option>Materials</option><option>Gas</option><option>Salary</option></select></label><label>Date<input name="date" required type="date" defaultValue="2026-09-02" /></label></div>{isSalary && <section className="payroll-card"><div className="payroll-card-title"><div><b>Weekly payroll</b><small>Farm overhead</small></div><span>Enter only the amounts paid</span></div><div className="payroll-rows"><span className="payroll-heading">Employee</span><span className="payroll-heading">Base pay</span><span className="payroll-heading">Bonus / tips</span>{['Kuya Rowel', 'Inek', 'Joshua'].flatMap((employeeName) => [<b key={`${employeeName}-name`}>{employeeName}</b>, <input key={`${employeeName}-salary`} name={`salary-${employeeName}`} min="0" step="0.01" type="number" placeholder="0.00" aria-label={`${employeeName} base pay`} />, <input key={`${employeeName}-bonus`} name={`bonus-${employeeName}`} min="0" step="0.01" type="number" placeholder="0.00" aria-label={`${employeeName} bonus or tips`} />])}</div></section>}<label>Supplier<input name={isSalary ? undefined : 'supplier'} required={!isSalary} placeholder="Store, farm, or supplier name" defaultValue={isSalary ? 'Farm workers' : undefined} disabled={isSalary} autoFocus={!isSalary} />{isSalary && <input name="supplier" type="hidden" value="Farm workers" />}</label><div className="form-grid"><label>Assign to<select name={isSalary ? undefined : 'batchId'} defaultValue="Farm overhead" disabled={isSalary}><option>Farm overhead</option>{!isSalary && batches.filter((batch) => batch.status === 'Active').map((batch) => <option key={batch.id}>{batch.id}</option>)}</select>{isSalary && <><input name="batchId" type="hidden" value="Farm overhead" /><small className="field-note">Salary is always assigned to farm overhead.</small></>}</label>{!isSalary && <label>Amount (PHP)<input name="amount" required min="0" step="0.01" type="number" /></label>}</div><label>Description<input name={isSalary ? undefined : 'description'} required={!isSalary} placeholder="What was purchased?" defaultValue={isSalary ? 'Weekly worker payroll' : undefined} disabled={isSalary} />{isSalary && <input name="description" type="hidden" value="Weekly worker payroll" />}</label><button className="submit-entry" type="submit">Save expense</button></form></section></div>
+}
+
+function BatchForm({ onClose, onSubmit }: { onClose: () => void; onSubmit: (event: FormEvent<HTMLFormElement>) => void }) { return <div className="modal-backdrop" role="presentation"><section className="entry-modal batch-form" role="dialog" aria-modal="true" aria-labelledby="batch-title"><div><p className="section-kicker">New livestock purchase</p><h2 id="batch-title">Create a batch</h2><p>The app creates a code from the species and purchase date, such as PIG-20260902.</p></div><button className="close-modal" type="button" onClick={onClose} aria-label="Close batch form">Close</button><form onSubmit={onSubmit}><div className="form-grid"><label>Animal type<select name="species" defaultValue="Pig"><option>Pig</option><option>Chicken</option></select></label><label>Purchase date<input name="purchaseDate" required type="date" defaultValue="2026-09-02" /></label></div><label>Bought from<input name="supplier" required placeholder="Supplier or farm name" autoFocus /></label><div className="form-grid"><label>Starting headcount<input name="headcount" required min="1" step="1" type="number" /></label><label>Purchase cost (PHP)<input name="purchaseCost" required min="0" step="0.01" type="number" /></label></div><div className="form-grid"><label>Starting average weight (kg)<input name="startingWeight" required min="0" step="0.01" type="number" /></label><label>Target selling weight (kg)<input name="targetWeight" required min="0" step="0.01" type="number" /></label></div><button className="submit-entry" type="submit">Create batch</button></form></section></div> }
+
+export default App
