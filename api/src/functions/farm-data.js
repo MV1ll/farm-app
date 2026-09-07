@@ -47,6 +47,90 @@ const createSupplier = async (name) => {
   return result.rows[0].id
 }
 
+const initialBatches = [
+  { batchCode: 'PIG-20260814', species: 'Pig', purchaseDate: '2026-08-14', supplier: 'San Miguel Hog Farm', headcount: 10, targetWeightKg: 90, purchaseCostPhp: 82560, status: 'Active' },
+  { batchCode: 'CHK-20260822', species: 'Chicken', purchaseDate: '2026-08-05', supplier: 'Bulacan Poultry Supply', headcount: 100, targetWeightKg: 1.8, purchaseCostPhp: 16028, status: 'Active' },
+  { batchCode: 'CHK-20260728', species: 'Chicken', purchaseDate: '2026-07-28', supplier: 'Bulacan Poultry Supply', headcount: 96, targetWeightKg: 1.8, purchaseCostPhp: 15740, status: 'Active' },
+  { batchCode: 'PIG-20260412', species: 'Pig', purchaseDate: '2026-04-12', supplier: 'San Miguel Hog Farm', headcount: 10, targetWeightKg: 90, purchaseCostPhp: 127600, status: 'Completed' },
+  { batchCode: 'PIG-20260119', species: 'Pig', purchaseDate: '2026-01-19', supplier: 'Tarlac Growers Cooperative', headcount: 14, targetWeightKg: 90, purchaseCostPhp: 176400, status: 'Completed' },
+  { batchCode: 'CHK-20260516', species: 'Chicken', purchaseDate: '2026-05-16', supplier: 'Bulacan Poultry Supply', headcount: 180, targetWeightKg: 1.8, purchaseCostPhp: 68400, status: 'Completed' },
+  { batchCode: 'CHK-20260308', species: 'Chicken', purchaseDate: '2026-03-08', supplier: 'North Luzon Hatchery', headcount: 150, targetWeightKg: 1.8, purchaseCostPhp: 57120, status: 'Completed' },
+]
+
+const initialPerformance = {
+  'PIG-20260814': [[30, 1.25], [34.2, 1.75], [38.5, 1.75], [42.8, 2.25]],
+  'CHK-20260822': [[0.04, 0.25], [0.19, 0.5], [0.46, 0.75], [0.86, 1]],
+  'CHK-20260728': [[0.04, 0.25], [0.18, 0.5], [0.42, 0.75], [0.72, 1], [1.08, 1], [1.46, 1]],
+}
+
+const initialMortality = [
+  ['CHK-20260822', '2026-08-17', 1, 'Weak chick found during morning check'],
+  ['CHK-20260822', '2026-08-24', 1, 'Loss recorded after heavy rain'],
+  ['CHK-20260728', '2026-08-02', 2, 'Early brooding losses'],
+  ['CHK-20260728', '2026-08-16', 1, 'Small bird found weak during health check'],
+  ['CHK-20260728', '2026-08-27', 1, 'Loss recorded after heat stress observation'],
+]
+
+const initialExpenses = [
+  ['2026-09-02', 'Gas', 'Petron Plaridel', null, 'Pickup fuel for supply run', 850, null, 0],
+  ['2026-09-01', 'Feed', 'Bulacan Agri Trading', 'CHK-20260822', 'Broiler grower feed, 4 bags', 1792, null, 0],
+  ['2026-08-30', 'Medicine', 'Meycauayan Vet Supply', 'CHK-20260728', 'Vitamins and electrolytes', 1260, null, 0],
+  ['2026-08-29', 'Materials', 'Ace Hardware', null, 'Bedding and pen repairs', 2140, null, 0],
+  ['2026-08-27', 'Feed', 'Bulacan Agri Trading', 'PIG-20260814', 'Hog grower feed, 6 bags', 3840, null, 0],
+  ['2026-08-26', 'Salary', 'Farm workers', null, 'Weekly worker payroll', 3200, 'Kuya Rowel', 200],
+]
+
+const seedInitialFarmData = async (userId) => {
+  const existing = await query('SELECT id FROM batches LIMIT 1')
+  if (existing.rowCount) return
+
+  const batchIds = new Map()
+  for (const batch of initialBatches) {
+    const supplierId = await createSupplier(batch.supplier)
+    const result = await query(
+      `INSERT INTO batches (
+        batch_code, species, purchase_date, supplier_id, starting_headcount,
+        target_weight_kg, purchase_cost_php, status, created_by
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+      RETURNING id`,
+      [batch.batchCode, batch.species, batch.purchaseDate, supplierId, batch.headcount, batch.targetWeightKg, batch.purchaseCostPhp, batch.status, userId],
+    )
+    batchIds.set(batch.batchCode, result.rows[0].id)
+  }
+
+  for (const [batchCode, samples] of Object.entries(initialPerformance)) {
+    const purchaseDate = initialBatches.find((batch) => batch.batchCode === batchCode).purchaseDate
+    for (const [index, [averageWeightKg, feedBags]] of samples.entries()) {
+      const weekEnding = new Date(`${purchaseDate}T00:00:00`)
+      weekEnding.setDate(weekEnding.getDate() + index * 7)
+      await query(
+        `INSERT INTO weekly_performance (
+          batch_id, week_ending, average_weight_kg, feed_bags, bag_weight_kg, recorded_by
+        ) VALUES ($1, $2, $3, $4, 50, $5)`,
+        [batchIds.get(batchCode), weekEnding.toISOString().slice(0, 10), averageWeightKg, feedBags, userId],
+      )
+    }
+  }
+
+  for (const [batchCode, lossDate, headsLost, note] of initialMortality) {
+    await query(
+      'INSERT INTO mortality_records (batch_id, loss_date, heads_lost, note, recorded_by) VALUES ($1, $2, $3, $4, $5)',
+      [batchIds.get(batchCode), lossDate, headsLost, note, userId],
+    )
+  }
+
+  for (const [expenseDate, category, supplier, batchCode, description, amountPhp, employeeName, bonusAmountPhp] of initialExpenses) {
+    const supplierId = await createSupplier(supplier)
+    await query(
+      `INSERT INTO expenses (
+        expense_date, category, supplier_id, batch_id, description, amount_php,
+        employee_name, bonus_amount_php, recorded_by
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+      [expenseDate, category, supplierId, batchCode ? batchIds.get(batchCode) : null, description, amountPhp, employeeName, bonusAmountPhp, userId],
+    )
+  }
+}
+
 const handlers = {
   async createBatch(payload, userId) {
     const supplierId = await createSupplier(payload.supplier)
@@ -131,6 +215,7 @@ app.http('farm-data', {
     if (!userId) return json({ error: 'Authentication is required.' }, 401)
 
     if (request.method === 'GET') {
+      await seedInitialFarmData(userId)
       const [batches, performance, mortality, notes, expenses, estimates, sales] = await Promise.all([
         query(`SELECT b.*, s.name AS supplier_name FROM batches b LEFT JOIN suppliers s ON s.id = b.supplier_id ORDER BY b.purchase_date DESC`),
         query('SELECT * FROM weekly_performance ORDER BY week_ending'),
