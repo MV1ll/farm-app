@@ -96,12 +96,12 @@ function App() {
           const survivingHeads = Number(batch.starting_headcount) - (lossesByBatch.get(batch.id) ?? 0)
           const feedKg = samples.reduce((total, sample) => total + sample.feedBags * 50, 0)
           const weightGainKg = survivingHeads * Math.max(latestWeight - firstWeight, 0)
-          return { id: batch.batch_code, databaseId: batch.id, species: batch.species, purchaseDate: batch.purchase_date, supplier: batch.supplier_name ?? 'Unknown supplier', headcount: Number(batch.starting_headcount), headsLost: lossesByBatch.get(batch.id) ?? 0, averageWeight: latestWeight, targetWeight: Number(batch.target_weight_kg), fcr: weightGainKg ? Number((feedKg / weightGainKg).toFixed(2)) : 0, totalCost: Number(batch.purchase_cost_php) + (expensesByBatch.get(batch.id) ?? 0), status: batch.status }
+          return { id: batch.batch_code, databaseId: batch.id, species: batch.species, purchaseDate: batch.purchase_date.slice(0, 10), supplier: batch.supplier_name ?? 'Unknown supplier', headcount: Number(batch.starting_headcount), headsLost: lossesByBatch.get(batch.id) ?? 0, averageWeight: latestWeight, targetWeight: Number(batch.target_weight_kg), fcr: weightGainKg ? Number((feedKg / weightGainKg).toFixed(2)) : 0, totalCost: Number(batch.purchase_cost_php) + (expensesByBatch.get(batch.id) ?? 0), status: batch.status }
         }))
         const batchCodes = new Map(data.batches.map((batch) => [batch.id, batch.batch_code]))
-        setMortalityRecords(data.mortality.map((record) => ({ id: record.id, batchId: batchCodes.get(record.batch_id) ?? record.batch_id, date: record.loss_date, headsLost: Number(record.heads_lost), note: record.note ?? '' })))
-        setBatchNotes(data.notes.map((note) => ({ id: note.id, batchId: batchCodes.get(note.batch_id) ?? note.batch_id, date: note.note_date, type: note.note_type, note: note.note })))
-        setExpenses(data.expenses.map((expense) => ({ id: expense.id, date: expense.expense_date, category: expense.category, supplier: expense.supplier_name ?? 'Farm overhead', batchId: expense.batch_id ? batchCodes.get(expense.batch_id) ?? expense.batch_id : 'Farm overhead', description: expense.description, amount: Number(expense.amount_php), employeeName: expense.employee_name ?? undefined, bonusAmount: Number(expense.bonus_amount_php) })))
+        setMortalityRecords(data.mortality.map((record) => ({ id: record.id, batchId: batchCodes.get(record.batch_id) ?? record.batch_id, date: record.loss_date.slice(0, 10), headsLost: Number(record.heads_lost), note: record.note ?? '' })))
+        setBatchNotes(data.notes.map((note) => ({ id: note.id, batchId: batchCodes.get(note.batch_id) ?? note.batch_id, date: note.note_date.slice(0, 10), type: note.note_type, note: note.note })))
+        setExpenses(data.expenses.map((expense) => ({ id: expense.id, date: expense.expense_date.slice(0, 10), category: expense.category, supplier: expense.supplier_name ?? 'Farm overhead', batchId: expense.batch_id ? batchCodes.get(expense.batch_id) ?? expense.batch_id : 'Farm overhead', description: expense.description, amount: Number(expense.amount_php), employeeName: expense.employee_name ?? undefined, bonusAmount: Number(expense.bonus_amount_php) })))
       } catch {
         // The local Vite preview has no Azure API, so it continues with sample data.
       }
