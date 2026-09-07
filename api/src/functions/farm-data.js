@@ -215,7 +215,6 @@ app.http('farm-data', {
     if (!userId) return json({ error: 'Authentication is required.' }, 401)
 
     if (request.method === 'GET') {
-      await seedInitialFarmData(userId)
       const [batches, performance, mortality, notes, expenses, estimates, sales] = await Promise.all([
         query(`SELECT b.*, s.name AS supplier_name FROM batches b LEFT JOIN suppliers s ON s.id = b.supplier_id ORDER BY b.purchase_date DESC`),
         query('SELECT * FROM weekly_performance ORDER BY week_ending'),
