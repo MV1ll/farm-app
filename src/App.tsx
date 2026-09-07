@@ -1,15 +1,16 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
 import './App.css'
 
 type Species = 'Pig' | 'Chicken'
 type EntryKind = 'Weekly feed use' | 'Mortality' | 'Weekly weight check' | 'Batch note' | 'Expense' | 'Sale'
-type Batch = { id: string; species: Species; purchaseDate: string; supplier: string; headcount: number; headsLost: number; averageWeight: number; targetWeight: number; fcr: number; totalCost: number; profit?: number; status: 'Active' | 'Completed' }
+type Batch = { id: string; databaseId?: string; species: Species; purchaseDate: string; supplier: string; headcount: number; headsLost: number; averageWeight: number; targetWeight: number; fcr: number; totalCost: number; profit?: number; status: 'Active' | 'Completed' }
 type ExpenseCategory = 'Feed' | 'Medicine' | 'Materials' | 'Gas' | 'Salary'
  type Expense = { id: string; date: string; category: ExpenseCategory; supplier: string; batchId: string; description: string; amount: number; employeeName?: string; bonusAmount?: number }
 type PerformanceSample = { averageWeight: number; feedBags: number }
 type BatchNote = { id: string; batchId: string; date: string; type: string; note: string }
 type MortalityRecord = { id: string; batchId: string; date: string; headsLost: number; note: string }
+type FarmData = { batches: Array<{ id: string; batch_code: string; species: Species; purchase_date: string; supplier_name: string | null; starting_headcount: number; target_weight_kg: number; purchase_cost_php: number; status: Batch['status'] }>; performance: Array<{ id: string; batch_id: string; week_ending: string; average_weight_kg: number; feed_bags: number | null; bag_weight_kg: number }>; mortality: Array<{ id: string; batch_id: string; loss_date: string; heads_lost: number; note: string | null }>; notes: Array<{ id: string; batch_id: string; note_date: string; note_type: string; note: string }>; expenses: Array<{ id: string; expense_date: string; category: ExpenseCategory; supplier_name: string | null; batch_id: string | null; description: string; amount_php: number; employee_name: string | null; bonus_amount_php: number }>; estimates: Array<{ batch_id: string; estimated_price_per_kg_php: number; estimated_weight_per_head_kg: number }> }
 
 const initialBatches: Batch[] = [
   { id: 'PIG-20260814', species: 'Pig', purchaseDate: '2026-08-14', supplier: 'San Miguel Hog Farm', headcount: 10, headsLost: 0, averageWeight: 42.8, targetWeight: 90, fcr: 2.71, totalCost: 86400, status: 'Active' },
@@ -46,6 +47,7 @@ const batchDays = (date: string) => Math.max(1, Math.round((Date.now() - new Dat
 
 function App() {
   const [batches, setBatches] = useState(initialBatches)
+  const [userName, setUserName] = useState('Mark')
   const [activeEntry, setActiveEntry] = useState<EntryKind | null>(null)
   const [section, setSection] = useState('Dashboard')
   const [notice, setNotice] = useState('')
@@ -55,10 +57,67 @@ function App() {
   const [selectedBatch, setSelectedBatch] = useState<Batch | null>(null)
   const [batchNotes, setBatchNotes] = useState<BatchNote[]>([])
   const [mortalityRecords, setMortalityRecords] = useState<MortalityRecord[]>(initialMortalityRecords)
+  const [performanceByBatch, setPerformanceByBatch] = useState(performanceSamples)
+  useEffect(() => {
+    const loadAuthenticatedUser = async () => {
+      try {
+        const response = await fetch('/.auth/me')
+        const profile = await response.json() as { clientPrincipal?: { userDetails?: string } }
+        const fullName = profile.clientPrincipal?.userDetails?.trim()
+        if (fullName) setUserName(fullName.split(/[.@]/)[0])
+      } catch {
+        // Local Vite development has no Azure Static Web Apps auth endpoint.
+      }
+    }
+    void loadAuthenticatedUser()
+  }, [])
+  useEffect(() => {
+    const loadFarmData = async () => {
+      try {
+        const response = await fetch('/api/farm-data')
+        if (!response.ok) return
+        const data = await response.json() as FarmData
+        if (!data.batches.length) return
+        const lossesByBatch = new Map<string, number>()
+        data.mortality.forEach((record) => lossesByBatch.set(record.batch_id, (lossesByBatch.get(record.batch_id) ?? 0) + Number(record.heads_lost)))
+        const expensesByBatch = new Map<string, number>()
+        data.expenses.forEach((expense) => expense.batch_id && expensesByBatch.set(expense.batch_id, (expensesByBatch.get(expense.batch_id) ?? 0) + Number(expense.amount_php)))
+        const performance = data.performance.reduce<Record<string, PerformanceSample[]>>((records, entry) => {
+          const batch = data.batches.find((item) => item.id === entry.batch_id)
+          if (!batch) return records
+          records[batch.batch_code] = [...(records[batch.batch_code] ?? []), { averageWeight: Number(entry.average_weight_kg), feedBags: Number(entry.feed_bags ?? 0) }]
+          return records
+        }, {})
+        setPerformanceByBatch(performance)
+        setBatches(data.batches.map((batch) => {
+          const samples = performance[batch.batch_code] ?? []
+          const firstWeight = samples[0]?.averageWeight ?? 0
+          const latestWeight = samples.at(-1)?.averageWeight ?? 0
+          const survivingHeads = Number(batch.starting_headcount) - (lossesByBatch.get(batch.id) ?? 0)
+          const feedKg = samples.reduce((total, sample) => total + sample.feedBags * 50, 0)
+          const weightGainKg = survivingHeads * Math.max(latestWeight - firstWeight, 0)
+          return { id: batch.batch_code, databaseId: batch.id, species: batch.species, purchaseDate: batch.purchase_date, supplier: batch.supplier_name ?? 'Unknown supplier', headcount: Number(batch.starting_headcount), headsLost: lossesByBatch.get(batch.id) ?? 0, averageWeight: latestWeight, targetWeight: Number(batch.target_weight_kg), fcr: weightGainKg ? Number((feedKg / weightGainKg).toFixed(2)) : 0, totalCost: Number(batch.purchase_cost_php) + (expensesByBatch.get(batch.id) ?? 0), status: batch.status }
+        }))
+        const batchCodes = new Map(data.batches.map((batch) => [batch.id, batch.batch_code]))
+        setMortalityRecords(data.mortality.map((record) => ({ id: record.id, batchId: batchCodes.get(record.batch_id) ?? record.batch_id, date: record.loss_date, headsLost: Number(record.heads_lost), note: record.note ?? '' })))
+        setBatchNotes(data.notes.map((note) => ({ id: note.id, batchId: batchCodes.get(note.batch_id) ?? note.batch_id, date: note.note_date, type: note.note_type, note: note.note })))
+        setExpenses(data.expenses.map((expense) => ({ id: expense.id, date: expense.expense_date, category: expense.category, supplier: expense.supplier_name ?? 'Farm overhead', batchId: expense.batch_id ? batchCodes.get(expense.batch_id) ?? expense.batch_id : 'Farm overhead', description: expense.description, amount: Number(expense.amount_php), employeeName: expense.employee_name ?? undefined, bonusAmount: Number(expense.bonus_amount_php) })))
+      } catch {
+        // The local Vite preview has no Azure API, so it continues with sample data.
+      }
+    }
+    void loadFarmData()
+  }, [])
   const totalAnimals = batches.filter((batch) => batch.status === 'Active').reduce((total, batch) => total + batch.headcount, 0)
   const totalCost = batches.filter((batch) => batch.status === 'Active').reduce((total, batch) => total + batch.totalCost, 0)
 
-  const addBatch = (event: FormEvent<HTMLFormElement>) => {
+  const saveToDatabase = async (action: string, payload: Record<string, unknown>) => {
+    const response = await fetch('/api/farm-data', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action, payload }) })
+    if (!response.ok) throw new Error('Unable to save this record to the farm database.')
+    return response.json() as Promise<{ id: string }>
+  }
+
+  const addBatch = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     const form = new FormData(event.currentTarget)
     const species = form.get('species') as Species
@@ -72,33 +131,54 @@ function App() {
       headcount: Number(form.get('headcount')), headsLost: 0, averageWeight: Number(form.get('startingWeight')),
       targetWeight: Number(form.get('targetWeight')), fcr: 0, totalCost: Number(form.get('purchaseCost')), status: 'Active',
     }
-    setBatches((current) => [batch, ...current])
-    setShowBatchForm(false)
-    setNotice(`${id} created and saved locally. Add weekly feed and weight records to build its performance history.`)
+    try {
+      const saved = await saveToDatabase('createBatch', { batchCode: id, species, purchaseDate, supplier: batch.supplier, headcount: batch.headcount, targetWeightKg: batch.targetWeight, purchaseCostPhp: batch.totalCost })
+      setBatches((current) => [{ ...batch, databaseId: saved.id }, ...current])
+      setShowBatchForm(false)
+      setNotice(`${id} saved to the farm database. Add weekly feed and weight records to build its performance history.`)
+    } catch {
+      setNotice('The batch could not be saved to the database. Check your connection and try again.')
+    }
   }
 
-  const saveEntry = (event: FormEvent<HTMLFormElement>) => {
+  const saveEntry = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     const form = new FormData(event.currentTarget)
-    if (activeEntry === 'Batch note') {
-      const note: BatchNote = { id: `NOTE-${Date.now()}`, batchId: String(form.get('batchId')), date: String(form.get('date')), type: String(form.get('noteType')), note: String(form.get('note')).trim() }
-      setBatchNotes((current) => [note, ...current])
+    const batchId = String(form.get('batchId'))
+    const batch = batches.find((item) => item.id === batchId)
+    if (!activeEntry || !batch?.databaseId) {
+      setNotice('This record cannot be saved until the batch has loaded from the farm database.')
+      return
     }
-    if (activeEntry === 'Mortality') {
-      const batchId = String(form.get('batchId'))
-      const headsLost = Number(form.get('value'))
-      const date = String(form.get('date'))
-      const note = String(form.get('note')).trim()
-      setBatches((current) => current.map((batch) => batch.id === batchId ? { ...batch, headsLost: batch.headsLost + headsLost } : batch))
-      setMortalityRecords((current) => [{ id: `LOSS-${Date.now()}`, batchId, date, headsLost, note }, ...current])
-      setNotice(`${headsLost} head${headsLost === 1 ? '' : 's'} lost recorded for ${batchId}.`)
-    } else {
-      setNotice(`${activeEntry} saved locally. It will sync when a connection is available.`)
+
+    const date = String(form.get('date'))
+    const value = Number(form.get('value'))
+    const note = String(form.get('note')).trim()
+    try {
+      if (activeEntry === 'Batch note') {
+        const saved = await saveToDatabase('createNote', { batchId: batch.databaseId, noteDate: date, noteType: String(form.get('noteType')), note })
+        setBatchNotes((current) => [{ id: saved.id, batchId, date, type: String(form.get('noteType')), note }, ...current])
+      } else if (activeEntry === 'Mortality') {
+        const saved = await saveToDatabase('recordMortality', { batchId: batch.databaseId, lossDate: date, headsLost: value, note })
+        setBatches((current) => current.map((item) => item.id === batchId ? { ...item, headsLost: item.headsLost + value } : item))
+        setMortalityRecords((current) => [{ id: saved.id, batchId, date, headsLost: value, note }, ...current])
+      } else if (activeEntry === 'Weekly feed use' || activeEntry === 'Weekly weight check') {
+        const existingSamples = performanceByBatch[batchId] ?? []
+        const existingSample = existingSamples.find((_, index) => index === existingSamples.length - 1)
+        const averageWeightKg = activeEntry === 'Weekly weight check' ? value : batch.averageWeight
+        const feedBags = activeEntry === 'Weekly feed use' ? value : existingSample?.feedBags ?? 0
+        await saveToDatabase('recordPerformance', { batchId: batch.databaseId, weekEnding: date, averageWeightKg, feedBags, note })
+        setPerformanceByBatch((current) => ({ ...current, [batchId]: [...existingSamples, { averageWeight: averageWeightKg, feedBags }].sort((first, second) => first.averageWeight - second.averageWeight) }))
+        if (activeEntry === 'Weekly weight check') setBatches((current) => current.map((item) => item.id === batchId ? { ...item, averageWeight: value } : item))
+      }
+      setActiveEntry(null)
+      setNotice(`${activeEntry} saved to the farm database.`)
+    } catch {
+      setNotice('This record could not be saved to the database. Check your connection and try again.')
     }
-    setActiveEntry(null)
   }
   const openBatch = (batch: Batch) => { setSelectedBatch(batch); setSection('Batches') }
-  const addExpense = (event: FormEvent<HTMLFormElement>) => {
+  const addExpense = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     const form = new FormData(event.currentTarget)
     const category = form.get('category') as ExpenseCategory
@@ -107,7 +187,7 @@ function App() {
     const batchId = String(form.get('batchId'))
     const description = String(form.get('description')).trim()
     const salaryEmployees = ['Kuya Rowel', 'Inek', 'Joshua']
-    const newExpenses = category === 'Salary'
+    const newExpenses: Expense[] = category === 'Salary'
         ? salaryEmployees.flatMap((employeeName) => {
           const baseAmount = Number(form.get(`salary-${employeeName}`))
           const bonusAmount = Number(form.get(`bonus-${employeeName}`))
@@ -115,18 +195,28 @@ function App() {
           return amount > 0 ? [{ id: `EXP-${Date.now()}-${employeeName}`, date, category, supplier, batchId, description, amount, employeeName, bonusAmount }] : []
         })
       : [{ id: `EXP-${Date.now()}`, date, category, supplier, batchId, description, amount: Number(form.get('amount')) }]
-    setExpenses((current) => [...newExpenses, ...current])
-    setShowExpenseForm(false)
-    const savedAmount = newExpenses.reduce((total, expense) => total + expense.amount, 0)
-    setNotice(`${category} expense of ${php.format(savedAmount)} saved locally.`)
+    try {
+      const savedExpenses = await Promise.all(newExpenses.map(async (expense) => {
+        const batch = batches.find((item) => item.id === expense.batchId)
+        const saved = await saveToDatabase('createExpense', { expenseDate: expense.date, category: expense.category, supplier: expense.supplier, batchId: batch?.databaseId ?? null, description: expense.description, amountPhp: expense.amount, employeeName: expense.employeeName ?? null, bonusAmountPhp: expense.bonusAmount ?? 0 })
+        return { ...expense, id: saved.id }
+      }))
+      setExpenses((current) => [...savedExpenses, ...current])
+      setBatches((current) => current.map((batch) => ({ ...batch, totalCost: batch.id === batchId ? batch.totalCost + savedExpenses.reduce((total, expense) => total + expense.amount, 0) : batch.totalCost })))
+      setShowExpenseForm(false)
+      const savedAmount = savedExpenses.reduce((total, expense) => total + expense.amount, 0)
+      setNotice(`${category} expense of ${php.format(savedAmount)} saved to the farm database.`)
+    } catch {
+      setNotice('The expense could not be saved to the database. Check your connection and try again.')
+    }
   }
 
   return <div className="farm-app">
-    <aside className="sidebar"><a className="wordmark" href="#dashboard" onClick={() => setSection('Dashboard')}><span>H</span>Handog Farm</a><p className="farm-location">Bulacan, Philippines</p><nav aria-label="Farm sections">{['Dashboard', 'Batches', 'Performance', 'Feed inventory', 'Expenses', 'Sales', 'Reports'].map((item) => <button key={item} type="button" className={section === item ? 'side-link selected' : 'side-link'} onClick={() => setSection(item)}>{item}</button>)}</nav><div className="sidebar-footer"><span className="sync-dot" /> All changes synced<br /><small>Last backup: today, 8:42 AM</small></div></aside>
+    <aside className="sidebar"><a className="wordmark" href="#dashboard" onClick={() => setSection('Dashboard')}><span>F</span>FarmIVAll</a><p className="farm-location">Bulacan, Philippines</p><nav aria-label="Farm sections">{['Dashboard', 'Batches', 'Performance', 'Feed inventory', 'Expenses', 'Sales', 'Reports'].map((item) => <button key={item} type="button" className={section === item ? 'side-link selected' : 'side-link'} onClick={() => setSection(item)}>{item}</button>)}</nav><div className="sidebar-footer"><span className="sync-dot" /> All changes synced<br /><small>Last backup: today, 8:42 AM</small></div></aside>
     <main className="workspace">
-      <header className="page-header"><div><p className="date-label">Tuesday, September 2, 2026</p><h1>{section === 'Batches' ? 'Livestock batches' : section === 'Performance' ? 'Batch performance' : section === 'Expenses' ? 'Farm expenses' : 'Good morning, Mark.'}</h1></div><div className="header-actions"><span className="offline-status">Online and synced</span><button className="profile-button" type="button" aria-label="Open account menu">M</button></div></header>
+      <header className="page-header"><div><p className="date-label">Tuesday, September 2, 2026</p><h1>{section === 'Batches' ? 'Livestock batches' : section === 'Performance' ? 'Batch performance' : section === 'Expenses' ? 'Farm expenses' : `Good morning, ${userName}.`}</h1></div><div className="header-actions"><span className="offline-status">Online and synced</span><button className="profile-button" type="button" aria-label="Open account menu">{userName.charAt(0).toUpperCase()}</button></div></header>
       {notice && <div className="notice" role="status"><span>Saved</span>{notice}<button type="button" onClick={() => setNotice('')}>Dismiss</button></div>}
-      {section === 'Batches' ? <BatchesPage batches={batches} selectedBatch={selectedBatch} onAddBatch={() => setShowBatchForm(true)} onOpenBatch={setSelectedBatch} /> : section === 'Performance' ? <PerformancePanel batches={batches} expenses={expenses} batchNotes={batchNotes} mortalityRecords={mortalityRecords} onAddWeight={() => setActiveEntry('Weekly weight check')} onAddNote={() => setActiveEntry('Batch note')} /> : section === 'Expenses' ? <ExpensesPage expenses={expenses} onAddExpense={() => setShowExpenseForm(true)} /> : <Dashboard batches={batches} expenses={expenses} totalAnimals={totalAnimals} totalCost={totalCost} onEntry={setActiveEntry} onBatches={() => setSection('Batches')} onOpenBatch={openBatch} />}
+      {section === 'Batches' ? <BatchesPage batches={batches} selectedBatch={selectedBatch} onAddBatch={() => setShowBatchForm(true)} onOpenBatch={setSelectedBatch} /> : section === 'Performance' ? <PerformancePanel batches={batches} expenses={expenses} batchNotes={batchNotes} mortalityRecords={mortalityRecords} performanceByBatch={performanceByBatch} onAddWeight={() => setActiveEntry('Weekly weight check')} onAddNote={() => setActiveEntry('Batch note')} /> : section === 'Expenses' ? <ExpensesPage expenses={expenses} onAddExpense={() => setShowExpenseForm(true)} /> : <Dashboard batches={batches} expenses={expenses} totalAnimals={totalAnimals} totalCost={totalCost} onEntry={setActiveEntry} onBatches={() => setSection('Batches')} onOpenBatch={openBatch} />}
     </main>
     {activeEntry && <EntryModal activeEntry={activeEntry} batches={batches} onClose={() => setActiveEntry(null)} onSave={saveEntry} />}
     {showBatchForm && <BatchForm onClose={() => setShowBatchForm(false)} onSubmit={addBatch} />}
@@ -184,7 +274,7 @@ function BatchTable({ batches, onOpen, showProfit = false }: { batches: Batch[];
 function FeedCard() { return <article className="feed-card"><div className="panel-heading"><div><p className="section-kicker">Inventory</p><h2>Feed stock</h2></div><button className="quiet-action" type="button">Manage</button></div>{[['Hog grower', '62%', '18 bags', ''], ['Broiler finisher', '23%', '6 bags', 'low'], ['Broiler starter', '45%', '12 bags', '']].map(([name, width, amount, state]) => <div className={`stock-line ${state}`} key={name}><b>{name}</b><span><i style={{ width }} /></span><em>{amount}</em></div>)}<p className="stock-warning">Broiler finisher is below your 10 bag minimum.</p></article> }
 function Ledger() { return <section className="ledger-section"><div className="panel-heading"><div><p className="section-kicker">This week</p><h2>Farm ledger</h2></div><button className="quiet-action" type="button">Open report</button></div><div className="ledger-items"><p><time>Mon</time><span className="ledger-mark feed" /><b>4 bags broiler grower recorded</b><small>CHK-20260822 · {php.format(1792)}</small></p><p><time>Tue</time><span className="ledger-mark weight" /><b>Weight sample added</b><small>CHK-20260728 · 1.46 kg average</small></p><p><time>Tue</time><span className="ledger-mark cost" /><b>Diesel expense recorded</b><small>Farm overhead · {php.format(850)}</small></p></div></section> }
 
-function PerformancePanel({ batches, expenses, batchNotes, mortalityRecords, onAddWeight, onAddNote }: { batches: Batch[]; expenses: Expense[]; batchNotes: BatchNote[]; mortalityRecords: MortalityRecord[]; onAddWeight: () => void; onAddNote: () => void }) {
+function PerformancePanel({ batches, expenses, batchNotes, mortalityRecords, performanceByBatch, onAddWeight, onAddNote }: { batches: Batch[]; expenses: Expense[]; batchNotes: BatchNote[]; mortalityRecords: MortalityRecord[]; performanceByBatch: Record<string, PerformanceSample[]>; onAddWeight: () => void; onAddNote: () => void }) {
   const activeBatches = batches.filter((batch) => batch.status === 'Active')
   const [selectedBatchId, setSelectedBatchId] = useState('CHK-20260728')
   const [estimatedPrices, setEstimatedPrices] = useState<Record<string, number>>({ 'PIG-20260814': 185, 'CHK-20260822': 120, 'CHK-20260728': 120 })
@@ -192,7 +282,7 @@ function PerformancePanel({ batches, expenses, batchNotes, mortalityRecords, onA
   const [selectedDayIndex, setSelectedDayIndex] = useState<number | null>(null)
   const selectedBatch = activeBatches.find((batch) => batch.id === selectedBatchId) ?? activeBatches[0]
   if (!selectedBatch) return null
-  const samples = performanceSamples[selectedBatch.id] ?? []
+  const samples = performanceByBatch[selectedBatch.id] ?? []
   const weeks = samples.map((_, index) => index === 0 ? 'Arrival' : `Wk ${index}`)
   const chartDates = samples.map((_, index) => {
     const date = new Date(`${selectedBatch.purchaseDate}T00:00:00`)
