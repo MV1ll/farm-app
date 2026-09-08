@@ -122,6 +122,15 @@ const handlers = {
     )
   },
 
+  async deleteBatch(payload) {
+    return query(
+      `DELETE FROM batches
+       WHERE id = $1
+       RETURNING id`,
+      [payload.batchId],
+    )
+  },
+
   async recordPerformance(payload, userId) {
     return query(
       `INSERT INTO weekly_performance (
@@ -167,6 +176,19 @@ const handlers = {
        VALUES ($1, $2, $3, $4, $5)
        RETURNING id`,
       [payload.batchId, payload.lossDate, payload.headsLost, payload.note, userId],
+    )
+  },
+
+  async updateMortality(payload, userId) {
+    return query(
+      `UPDATE mortality_records
+       SET loss_date = $2,
+           heads_lost = $3,
+           note = $4,
+           recorded_by = $5
+       WHERE id = $1
+       RETURNING id`,
+      [payload.mortalityId, payload.lossDate, payload.headsLost, payload.note, userId],
     )
   },
 
