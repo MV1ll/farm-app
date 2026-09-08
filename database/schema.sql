@@ -81,7 +81,8 @@ CREATE TABLE expenses (
 
 CREATE TABLE feed_inventory (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    feed_name TEXT UNIQUE NOT NULL,
+    batch_id UUID NOT NULL REFERENCES batches(id) ON DELETE CASCADE,
+    feed_name TEXT NOT NULL,
     species livestock_species NOT NULL,
     stage TEXT NOT NULL,
     bags_on_hand NUMERIC(8, 2) NOT NULL DEFAULT 0 CHECK (bags_on_hand >= 0),
@@ -119,3 +120,4 @@ CREATE INDEX mortality_records_batch_date_idx ON mortality_records (batch_id, lo
 CREATE INDEX batch_notes_batch_date_idx ON batch_notes (batch_id, note_date);
 CREATE INDEX expenses_batch_date_idx ON expenses (batch_id, expense_date);
 CREATE INDEX feed_inventory_species_stage_idx ON feed_inventory (species, stage);
+CREATE UNIQUE INDEX feed_inventory_batch_feed_name_idx ON feed_inventory (batch_id, feed_name);

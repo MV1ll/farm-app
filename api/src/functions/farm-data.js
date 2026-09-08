@@ -128,10 +128,10 @@ const handlers = {
     const supplierId = await createSupplier(payload.supplier)
     return query(
       `INSERT INTO feed_inventory (
-        feed_name, species, stage, bags_on_hand, reorder_level_bags,
+        batch_id, feed_name, species, stage, bags_on_hand, reorder_level_bags,
         bag_weight_kg, unit_cost_php, supplier_id, updated_by
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-      ON CONFLICT (feed_name) DO UPDATE SET
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+      ON CONFLICT (batch_id, feed_name) DO UPDATE SET
         species = EXCLUDED.species,
         stage = EXCLUDED.stage,
         bags_on_hand = EXCLUDED.bags_on_hand,
@@ -142,7 +142,7 @@ const handlers = {
         updated_by = EXCLUDED.updated_by,
         updated_at = now()
       RETURNING id`,
-      [payload.feedName, payload.species, payload.stage, payload.bagsOnHand, payload.reorderLevelBags, payload.bagWeightKg, payload.unitCostPhp, supplierId, userId],
+      [payload.batchId, payload.feedName, payload.species, payload.stage, payload.bagsOnHand, payload.reorderLevelBags, payload.bagWeightKg, payload.unitCostPhp, supplierId, userId],
     )
   },
 
@@ -179,7 +179,7 @@ app.http('farm-data', {
         query('SELECT e.*, s.name AS supplier_name FROM expenses e LEFT JOIN suppliers s ON s.id = e.supplier_id ORDER BY expense_date DESC'),
         query('SELECT * FROM batch_sale_estimates'),
         query('SELECT * FROM sales ORDER BY sale_date DESC'),
-        query('SELECT f.*, s.name AS supplier_name FROM feed_inventory f LEFT JOIN suppliers s ON s.id = f.supplier_id ORDER BY f.species, f.stage, f.feed_name'),
+        query('SELECT f.*, s.name AS supplier_name, b.batch_code FROM feed_inventory f JOIN batches b ON b.id = f.batch_id LEFT JOIN suppliers s ON s.id = f.supplier_id ORDER BY b.batch_code, f.species, f.stage, f.feed_name'),
       ])
       return json({ batches: batches.rows, performance: performance.rows, mortality: mortality.rows, notes: notes.rows, expenses: expenses.rows, estimates: estimates.rows, sales: sales.rows, feedInventory: feedInventory.rows })
     }
