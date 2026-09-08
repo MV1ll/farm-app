@@ -23,6 +23,7 @@ function App() {
   const [section, setSection] = useState('Dashboard')
   const [notice, setNotice] = useState('')
   const [showBatchForm, setShowBatchForm] = useState(false)
+  const [editingBatch, setEditingBatch] = useState<Batch | null>(null)
   const [expenses, setExpenses] = useState<Expense[]>([])
   const [showExpenseForm, setShowExpenseForm] = useState(false)
   const [selectedBatch, setSelectedBatch] = useState<Batch | null>(null)
@@ -130,6 +131,31 @@ function App() {
     }
   }
 
+  const updateBatch = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    if (!editingBatch?.databaseId) return
+    const form = new FormData(event.currentTarget)
+    const updatedBatch: Batch = {
+      ...editingBatch,
+      id: String(form.get('batchCode')).trim(),
+      species: form.get('species') as Species,
+      purchaseDate: String(form.get('purchaseDate')),
+      supplier: String(form.get('supplier')).trim(),
+      headcount: Number(form.get('headcount')),
+      targetWeight: Number(form.get('targetWeight')),
+      totalCost: Number(form.get('purchaseCost')),
+    }
+    try {
+      await saveToDatabase('updateBatch', { batchId: editingBatch.databaseId, batchCode: updatedBatch.id, species: updatedBatch.species, purchaseDate: updatedBatch.purchaseDate, supplier: updatedBatch.supplier, headcount: updatedBatch.headcount, targetWeightKg: updatedBatch.targetWeight, purchaseCostPhp: updatedBatch.totalCost })
+      setBatches((current) => current.map((batch) => batch.databaseId === editingBatch.databaseId ? updatedBatch : batch))
+      setSelectedBatch(updatedBatch)
+      setEditingBatch(null)
+      setNotice(`${updatedBatch.id} updated in the farm database.`)
+    } catch {
+      setNotice('The batch could not be updated. Check the batch code is unique and try again.')
+    }
+  }
+
   const saveEntry = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     const form = new FormData(event.currentTarget)
@@ -207,10 +233,11 @@ function App() {
       {notice && <div className="notice" role="status"><span>Saved</span>{notice}<button type="button" onClick={() => setNotice('')}>Dismiss</button></div>}
       {dataLoadState === 'loading' && <div className="notice" role="status"><span>Loading</span>Loading live farm records from PostgreSQL.</div>}
       {dataLoadState === 'error' && <div className="notice" role="alert"><span>Unavailable</span>Live farm records could not be loaded. Check the database connection and refresh the page.</div>}
-      {section === 'Batches' ? <BatchesPage batches={batches} selectedBatch={selectedBatch} onAddBatch={() => setShowBatchForm(true)} onOpenBatch={setSelectedBatch} /> : section === 'Performance' ? <PerformancePanel batches={batches} expenses={expenses} batchNotes={batchNotes} mortalityRecords={mortalityRecords} performanceByBatch={performanceByBatch} saleEstimates={saleEstimates} onAddWeight={() => setActiveEntry('Weekly weight check')} onAddNote={() => setActiveEntry('Batch note')} onSaveEstimate={saveSaleEstimate} /> : section === 'Expenses' ? <ExpensesPage expenses={expenses} onAddExpense={() => setShowExpenseForm(true)} /> : <Dashboard batches={batches} expenses={expenses} totalAnimals={totalAnimals} totalCost={totalCost} onEntry={(kind) => kind === 'Expense' ? setShowExpenseForm(true) : setActiveEntry(kind)} onBatches={() => setSection('Batches')} onOpenBatch={openBatch} />}
+      {section === 'Batches' ? <BatchesPage batches={batches} selectedBatch={selectedBatch} onAddBatch={() => setShowBatchForm(true)} onEditBatch={setEditingBatch} onOpenBatch={setSelectedBatch} /> : section === 'Performance' ? <PerformancePanel batches={batches} expenses={expenses} batchNotes={batchNotes} mortalityRecords={mortalityRecords} performanceByBatch={performanceByBatch} saleEstimates={saleEstimates} onAddWeight={() => setActiveEntry('Weekly weight check')} onAddNote={() => setActiveEntry('Batch note')} onSaveEstimate={saveSaleEstimate} /> : section === 'Expenses' ? <ExpensesPage expenses={expenses} onAddExpense={() => setShowExpenseForm(true)} /> : <Dashboard batches={batches} expenses={expenses} totalAnimals={totalAnimals} totalCost={totalCost} onEntry={(kind) => kind === 'Expense' ? setShowExpenseForm(true) : setActiveEntry(kind)} onBatches={() => setSection('Batches')} onOpenBatch={openBatch} />}
     </main>
     {activeEntry && <EntryModal activeEntry={activeEntry} batches={batches} onClose={() => setActiveEntry(null)} onSave={saveEntry} />}
     {showBatchForm && <BatchForm onClose={() => setShowBatchForm(false)} onSubmit={addBatch} />}
+    {editingBatch && <BatchForm batch={editingBatch} onClose={() => setEditingBatch(null)} onSubmit={updateBatch} />}
     {showExpenseForm && <ExpenseForm batches={batches} onClose={() => setShowExpenseForm(false)} onSubmit={addExpense} />}
   </div>
 }
@@ -231,12 +258,12 @@ function Dashboard({ batches, expenses, totalAnimals, totalCost, onEntry, onBatc
     <Ledger /></>
 }
 
-function BatchesPage({ batches, onAddBatch, onOpenBatch }: { batches: Batch[]; selectedBatch: Batch | null; onAddBatch: () => void; onOpenBatch: (batch: Batch) => void }) {
+function BatchesPage({ batches, selectedBatch, onAddBatch, onEditBatch, onOpenBatch }: { batches: Batch[]; selectedBatch: Batch | null; onAddBatch: () => void; onEditBatch: (batch: Batch) => void; onOpenBatch: (batch: Batch) => void }) {
   const [completedFrom, setCompletedFrom] = useState('')
   const [completedTo, setCompletedTo] = useState('')
   const activeBatches = batches.filter((batch) => batch.status === 'Active')
   const completedBatches = batches.filter((batch) => batch.status === 'Completed' && (!completedFrom || batch.purchaseDate >= completedFrom) && (!completedTo || batch.purchaseDate <= completedTo))
-  return <><section className="batches-toolbar"><p className="section-kicker">Grow-out operations</p><button className="primary-action" type="button" onClick={onAddBatch}>Add livestock batch</button></section>
+  return <><section className="batches-toolbar"><p className="section-kicker">Grow-out operations</p><div className="batch-toolbar-actions">{selectedBatch && <button className="quiet-action" type="button" onClick={() => onEditBatch(selectedBatch)}>Edit batch</button>}<button className="primary-action" type="button" onClick={onAddBatch}>Add livestock batch</button></div></section>
     <section className="batch-metrics"><span><b>{activeBatches.length}</b> active batches</span><span><b>{activeBatches.filter((batch) => batch.species === 'Pig').length}</b> pig batches</span><span><b>{activeBatches.filter((batch) => batch.species === 'Chicken').length}</b> chicken batches</span></section>
     <article className="table-panel batches-list"><div className="panel-heading"><div><p className="section-kicker">Current stock</p><h2>All active batches</h2></div><span className="list-note">Select a batch to view its ledger</span></div><BatchTable batches={activeBatches} onOpen={onOpenBatch} /></article>
     <article className="table-panel completed-list"><div className="panel-heading"><div><p className="section-kicker">History</p><h2>Completed batches</h2></div><div className="date-filter"><label>From<input type="date" value={completedFrom} onChange={(event) => setCompletedFrom(event.target.value)} /></label><label>To<input type="date" value={completedTo} onChange={(event) => setCompletedTo(event.target.value)} /></label></div></div><BatchTable batches={completedBatches} onOpen={onOpenBatch} showProfit /><p className="filter-note">{completedBatches.length} completed batch{completedBatches.length === 1 ? '' : 'es'} shown. Filter uses the purchase date.</p></article>
@@ -318,6 +345,6 @@ function ExpenseForm({ batches, onClose, onSubmit }: { batches: Batch[]; onClose
   return <div className="modal-backdrop" role="presentation"><section className="entry-modal payroll-modal" role="dialog" aria-modal="true" aria-labelledby="expense-title"><div><p className="section-kicker">New expense</p><h2 id="expense-title">Record a cost</h2><p>Record the supplier and assign the cost to a batch or farm overhead.</p></div><button className="close-modal" type="button" onClick={onClose} aria-label="Close expense form">Close</button><form onSubmit={onSubmit}><div className="form-grid"><label>Category<select name="category" value={category} onChange={(event) => setCategory(event.target.value as ExpenseCategory)}><option>Feed</option><option>Medicine</option><option>Materials</option><option>Gas</option><option>Salary</option></select></label><label>Date<input name="date" required type="date" defaultValue="2026-09-02" /></label></div>{isSalary && <section className="payroll-card"><div className="payroll-card-title"><div><b>Weekly payroll</b><small>Farm overhead</small></div><span>Enter only the amounts paid</span></div><div className="payroll-rows"><span className="payroll-heading">Employee</span><span className="payroll-heading">Base pay</span><span className="payroll-heading">Bonus / tips</span>{['Kuya Rowel', 'Inek', 'Joshua'].flatMap((employeeName) => [<b key={`${employeeName}-name`}>{employeeName}</b>, <input key={`${employeeName}-salary`} name={`salary-${employeeName}`} min="0" step="0.01" type="number" placeholder="0.00" aria-label={`${employeeName} base pay`} />, <input key={`${employeeName}-bonus`} name={`bonus-${employeeName}`} min="0" step="0.01" type="number" placeholder="0.00" aria-label={`${employeeName} bonus or tips`} />])}</div></section>}<label>Supplier<input name={isSalary ? undefined : 'supplier'} required={!isSalary} placeholder="Store, farm, or supplier name" defaultValue={isSalary ? 'Farm workers' : undefined} disabled={isSalary} autoFocus={!isSalary} />{isSalary && <input name="supplier" type="hidden" value="Farm workers" />}</label><div className="form-grid"><label>Assign to<select name={isSalary ? undefined : 'batchId'} defaultValue="Farm overhead" disabled={isSalary}><option>Farm overhead</option>{!isSalary && batches.filter((batch) => batch.status === 'Active').map((batch) => <option key={batch.id}>{batch.id}</option>)}</select>{isSalary && <><input name="batchId" type="hidden" value="Farm overhead" /><small className="field-note">Salary is always assigned to farm overhead.</small></>}</label>{!isSalary && <label>Amount (PHP)<input name="amount" required min="0" step="0.01" type="number" /></label>}</div><label>Description<input name={isSalary ? undefined : 'description'} required={!isSalary} placeholder="What was purchased?" defaultValue={isSalary ? 'Weekly worker payroll' : undefined} disabled={isSalary} />{isSalary && <input name="description" type="hidden" value="Weekly worker payroll" />}</label><button className="submit-entry" type="submit">Save expense</button></form></section></div>
 }
 
-function BatchForm({ onClose, onSubmit }: { onClose: () => void; onSubmit: (event: FormEvent<HTMLFormElement>) => void }) { return <div className="modal-backdrop" role="presentation"><section className="entry-modal batch-form" role="dialog" aria-modal="true" aria-labelledby="batch-title"><div><p className="section-kicker">New livestock purchase</p><h2 id="batch-title">Create a batch</h2><p>The app creates a code from the species and purchase date, such as PIG-20260902.</p></div><button className="close-modal" type="button" onClick={onClose} aria-label="Close batch form">Close</button><form onSubmit={onSubmit}><div className="form-grid"><label>Animal type<select name="species" defaultValue="Pig"><option>Pig</option><option>Chicken</option></select></label><label>Purchase date<input name="purchaseDate" required type="date" defaultValue="2026-09-02" /></label></div><label>Bought from<input name="supplier" required placeholder="Supplier or farm name" autoFocus /></label><div className="form-grid"><label>Starting headcount<input name="headcount" required min="1" step="1" type="number" /></label><label>Purchase cost (PHP)<input name="purchaseCost" required min="0" step="0.01" type="number" /></label></div><div className="form-grid"><label>Starting average weight (kg)<input name="startingWeight" required min="0" step="0.01" type="number" /></label><label>Target selling weight (kg)<input name="targetWeight" required min="0" step="0.01" type="number" /></label></div><button className="submit-entry" type="submit">Create batch</button></form></section></div> }
+function BatchForm({ batch, onClose, onSubmit }: { batch?: Batch; onClose: () => void; onSubmit: (event: FormEvent<HTMLFormElement>) => void }) { const isEditing = Boolean(batch); return <div className="modal-backdrop" role="presentation"><section className="entry-modal batch-form" role="dialog" aria-modal="true" aria-labelledby="batch-title"><div><p className="section-kicker">{isEditing ? 'Correct batch details' : 'New livestock purchase'}</p><h2 id="batch-title">{isEditing ? `Edit ${batch?.id}` : 'Create a batch'}</h2><p>{isEditing ? 'Update the original purchase information. Recorded weight, feed, mortality, notes, and costs remain attached to this batch.' : 'The app creates a code from the species and purchase date, such as PIG-20260902.'}</p></div><button className="close-modal" type="button" onClick={onClose} aria-label="Close batch form">Close</button><form onSubmit={onSubmit}>{isEditing && <label>Batch code<input name="batchCode" required defaultValue={batch?.id} autoFocus /></label>}<div className="form-grid"><label>Animal type<select name="species" defaultValue={batch?.species ?? 'Pig'}><option>Pig</option><option>Chicken</option></select></label><label>Purchase date<input name="purchaseDate" required type="date" defaultValue={batch?.purchaseDate ?? '2026-09-02'} /></label></div><label>Bought from<input name="supplier" required placeholder="Supplier or farm name" defaultValue={batch?.supplier} autoFocus={!isEditing} /></label><div className="form-grid"><label>Starting headcount<input name="headcount" required min="1" step="1" type="number" defaultValue={batch?.headcount} /></label><label>Purchase cost (PHP)<input name="purchaseCost" required min="0" step="0.01" type="number" defaultValue={batch?.totalCost} /></label></div><div className="form-grid">{!isEditing && <label>Starting average weight (kg)<input name="startingWeight" required min="0" step="0.01" type="number" /></label>}<label>Target selling weight (kg)<input name="targetWeight" required min="0" step="0.01" type="number" defaultValue={batch?.targetWeight} /></label></div><button className="submit-entry" type="submit">{isEditing ? 'Save batch changes' : 'Create batch'}</button></form></section></div> }
 
 export default App
