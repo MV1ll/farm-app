@@ -90,6 +90,20 @@ const handlers = {
     )
   },
 
+  async removeCapital(payload, userId) {
+    return withTransaction(async (client) => {
+      await client.query('SELECT pg_advisory_xact_lock(20260908)')
+      const { funded, spent } = await getOperationalCapital(client)
+      if (Number(payload.amountPhp) > funded - spent) throw new Error('Capital removal exceeds the available operational capital.')
+      return client.query(
+        `INSERT INTO capital_funds (received_date, amount_php, description, recorded_by)
+         VALUES ($1, $2, $3, $4)
+         RETURNING id`,
+        [payload.receivedDate, -Number(payload.amountPhp), payload.description, userId],
+      )
+    })
+  },
+
   async updateBatch(payload) {
     const supplierId = await createSupplier(payload.supplier)
     return query(
