@@ -138,6 +138,29 @@ const handlers = {
     )
   },
 
+  async updatePerformance(payload, userId) {
+    return query(
+      `UPDATE weekly_performance
+       SET week_ending = $2,
+           average_weight_kg = $3,
+           feed_bags = $4,
+           note = $5,
+           recorded_by = $6
+       WHERE id = $1
+       RETURNING id`,
+      [payload.performanceId, payload.weekEnding, payload.averageWeightKg, payload.feedBags, payload.note, userId],
+    )
+  },
+
+  async deletePerformance(payload) {
+    return query(
+      `DELETE FROM weekly_performance
+       WHERE id = $1
+       RETURNING id`,
+      [payload.performanceId],
+    )
+  },
+
   async recordMortality(payload, userId) {
     return query(
       `INSERT INTO mortality_records (batch_id, loss_date, heads_lost, note, recorded_by)
@@ -196,6 +219,30 @@ const handlers = {
       ) VALUES ($1, $2, $3, $4, $5, $6, $7, COALESCE($8, 0), $9)
       RETURNING id`,
       [payload.expenseDate, payload.category, supplierId, payload.batchId, payload.description, payload.amountPhp, payload.employeeName, payload.bonusAmountPhp, userId],
+    )
+  },
+
+  async updateExpense(payload, userId) {
+    const supplierId = await createSupplier(payload.supplier)
+    return query(
+      `UPDATE expenses
+       SET expense_date = $2,
+           supplier_id = $3,
+           description = $4,
+           amount_php = $5,
+           recorded_by = $6
+       WHERE id = $1
+       RETURNING id`,
+      [payload.expenseId, payload.expenseDate, supplierId, payload.description, payload.amountPhp, userId],
+    )
+  },
+
+  async deleteExpense(payload) {
+    return query(
+      `DELETE FROM expenses
+       WHERE id = $1
+       RETURNING id`,
+      [payload.expenseId],
     )
   },
 
