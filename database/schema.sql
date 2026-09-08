@@ -16,6 +16,15 @@ CREATE TABLE suppliers (
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+CREATE TABLE capital_funds (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    received_date DATE NOT NULL,
+    amount_php NUMERIC(12, 2) NOT NULL CHECK (amount_php > 0),
+    description TEXT NOT NULL,
+    recorded_by UUID REFERENCES farm_users(id),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 CREATE TABLE batches (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     batch_code TEXT UNIQUE NOT NULL,
@@ -121,3 +130,4 @@ CREATE INDEX batch_notes_batch_date_idx ON batch_notes (batch_id, note_date);
 CREATE INDEX expenses_batch_date_idx ON expenses (batch_id, expense_date);
 CREATE INDEX feed_inventory_species_stage_idx ON feed_inventory (species, stage);
 CREATE UNIQUE INDEX feed_inventory_batch_feed_name_idx ON feed_inventory (batch_id, feed_name);
+CREATE INDEX capital_funds_received_date_idx ON capital_funds (received_date);

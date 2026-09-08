@@ -1,6 +1,6 @@
 import { app } from '@azure/functions'
 import { createHash } from 'node:crypto'
-import { query } from '../db.js'
+import { query, withTransaction } from '../db.js'
 
 const json = (body, status = 200) => ({ status, jsonBody: body })
 
@@ -47,16 +47,46 @@ const createSupplier = async (name) => {
   return result.rows[0].id
 }
 
+const getOperationalCapital = async (client = { query }) => {
+  const result = await client.query(
+    `SELECT
+       COALESCE((SELECT SUM(amount_php) FROM capital_funds), 0) AS funded,
+       COALESCE((SELECT SUM(purchase_cost_php) FROM batches), 0)
+       + COALESCE((SELECT SUM(amount_php) FROM expenses WHERE category IN ('Feed', 'Medicine')), 0) AS spent`,
+  )
+  const { funded, spent } = result.rows[0]
+  return { funded: Number(funded), spent: Number(spent) }
+}
+
 const handlers = {
   async createBatch(payload, userId) {
-    const supplierId = await createSupplier(payload.supplier)
+    return withTransaction(async (client) => {
+      await client.query('SELECT pg_advisory_xact_lock(20260908)')
+      const { funded, spent } = await getOperationalCapital(client)
+      if (Number(payload.purchaseCostPhp) > funded - spent) throw new Error('Batch purchase exceeds available operational capital.')
+      const supplier = await client.query(
+        `INSERT INTO suppliers (name) VALUES ($1)
+         ON CONFLICT (name) DO UPDATE SET name = EXCLUDED.name
+         RETURNING id`,
+        [payload.supplier.trim()],
+      )
+      return client.query(
+        `INSERT INTO batches (
+          batch_code, species, purchase_date, supplier_id, starting_headcount,
+          target_weight_kg, purchase_cost_php, created_by
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        RETURNING id`,
+        [payload.batchCode, payload.species, payload.purchaseDate, supplier.rows[0].id, payload.headcount, payload.targetWeightKg, payload.purchaseCostPhp, userId],
+      )
+    })
+  },
+
+  async addCapital(payload, userId) {
     return query(
-      `INSERT INTO batches (
-        batch_code, species, purchase_date, supplier_id, starting_headcount,
-        target_weight_kg, purchase_cost_php, created_by
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-      RETURNING id`,
-      [payload.batchCode, payload.species, payload.purchaseDate, supplierId, payload.headcount, payload.targetWeightKg, payload.purchaseCostPhp, userId],
+      `INSERT INTO capital_funds (received_date, amount_php, description, recorded_by)
+       VALUES ($1, $2, $3, $4)
+       RETURNING id`,
+      [payload.receivedDate, payload.amountPhp, payload.description, userId],
     )
   },
 
@@ -171,7 +201,7 @@ app.http('farm-data', {
     if (!userId) return json({ error: 'Authentication is required.' }, 401)
 
     if (request.method === 'GET') {
-      const [batches, performance, mortality, notes, expenses, estimates, sales, feedInventory] = await Promise.all([
+      const [batches, performance, mortality, notes, expenses, estimates, sales, feedInventory, capitalFunds, operationalCapital] = await Promise.all([
         query(`SELECT b.*, s.name AS supplier_name FROM batches b LEFT JOIN suppliers s ON s.id = b.supplier_id ORDER BY b.purchase_date DESC`),
         query('SELECT * FROM weekly_performance ORDER BY week_ending'),
         query('SELECT * FROM mortality_records ORDER BY loss_date'),
@@ -180,8 +210,10 @@ app.http('farm-data', {
         query('SELECT * FROM batch_sale_estimates'),
         query('SELECT * FROM sales ORDER BY sale_date DESC'),
         query('SELECT f.*, s.name AS supplier_name, b.batch_code FROM feed_inventory f JOIN batches b ON b.id = f.batch_id LEFT JOIN suppliers s ON s.id = f.supplier_id ORDER BY b.batch_code, f.species, f.stage, f.feed_name'),
+        query('SELECT * FROM capital_funds ORDER BY received_date DESC, created_at DESC'),
+        getOperationalCapital(),
       ])
-      return json({ batches: batches.rows, performance: performance.rows, mortality: mortality.rows, notes: notes.rows, expenses: expenses.rows, estimates: estimates.rows, sales: sales.rows, feedInventory: feedInventory.rows })
+      return json({ batches: batches.rows, performance: performance.rows, mortality: mortality.rows, notes: notes.rows, expenses: expenses.rows, estimates: estimates.rows, sales: sales.rows, feedInventory: feedInventory.rows, capitalFunds: capitalFunds.rows, operationalCapital })
     }
 
     const { action, payload } = await request.json()
