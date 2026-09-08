@@ -156,6 +156,37 @@ const handlers = {
     )
   },
 
+  async updateNote(payload, userId) {
+    return query(
+      `UPDATE batch_notes
+       SET note_date = $2,
+           note_type = $3,
+           note = $4,
+           recorded_by = $5
+       WHERE id = $1
+       RETURNING id`,
+      [payload.noteId, payload.noteDate, payload.noteType, payload.note, userId],
+    )
+  },
+
+  async deleteNote(payload) {
+    return query(
+      `DELETE FROM batch_notes
+       WHERE id = $1
+       RETURNING id`,
+      [payload.noteId],
+    )
+  },
+
+  async deleteMortality(payload) {
+    return query(
+      `DELETE FROM mortality_records
+       WHERE id = $1
+       RETURNING id`,
+      [payload.mortalityId],
+    )
+  },
+
   async createExpense(payload, userId) {
     const supplierId = await createSupplier(payload.supplier)
     return query(
