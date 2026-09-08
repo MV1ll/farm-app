@@ -124,6 +124,28 @@ const handlers = {
     )
   },
 
+  async saveFeedInventory(payload, userId) {
+    const supplierId = await createSupplier(payload.supplier)
+    return query(
+      `INSERT INTO feed_inventory (
+        feed_name, species, stage, bags_on_hand, reorder_level_bags,
+        bag_weight_kg, unit_cost_php, supplier_id, updated_by
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+      ON CONFLICT (feed_name) DO UPDATE SET
+        species = EXCLUDED.species,
+        stage = EXCLUDED.stage,
+        bags_on_hand = EXCLUDED.bags_on_hand,
+        reorder_level_bags = EXCLUDED.reorder_level_bags,
+        bag_weight_kg = EXCLUDED.bag_weight_kg,
+        unit_cost_php = EXCLUDED.unit_cost_php,
+        supplier_id = EXCLUDED.supplier_id,
+        updated_by = EXCLUDED.updated_by,
+        updated_at = now()
+      RETURNING id`,
+      [payload.feedName, payload.species, payload.stage, payload.bagsOnHand, payload.reorderLevelBags, payload.bagWeightKg, payload.unitCostPhp, supplierId, userId],
+    )
+  },
+
   async saveSaleEstimate(payload, userId) {
     return query(
       `INSERT INTO batch_sale_estimates (
@@ -149,7 +171,7 @@ app.http('farm-data', {
     if (!userId) return json({ error: 'Authentication is required.' }, 401)
 
     if (request.method === 'GET') {
-      const [batches, performance, mortality, notes, expenses, estimates, sales] = await Promise.all([
+      const [batches, performance, mortality, notes, expenses, estimates, sales, feedInventory] = await Promise.all([
         query(`SELECT b.*, s.name AS supplier_name FROM batches b LEFT JOIN suppliers s ON s.id = b.supplier_id ORDER BY b.purchase_date DESC`),
         query('SELECT * FROM weekly_performance ORDER BY week_ending'),
         query('SELECT * FROM mortality_records ORDER BY loss_date'),
@@ -157,8 +179,9 @@ app.http('farm-data', {
         query('SELECT e.*, s.name AS supplier_name FROM expenses e LEFT JOIN suppliers s ON s.id = e.supplier_id ORDER BY expense_date DESC'),
         query('SELECT * FROM batch_sale_estimates'),
         query('SELECT * FROM sales ORDER BY sale_date DESC'),
+        query('SELECT f.*, s.name AS supplier_name FROM feed_inventory f LEFT JOIN suppliers s ON s.id = f.supplier_id ORDER BY f.species, f.stage, f.feed_name'),
       ])
-      return json({ batches: batches.rows, performance: performance.rows, mortality: mortality.rows, notes: notes.rows, expenses: expenses.rows, estimates: estimates.rows, sales: sales.rows })
+      return json({ batches: batches.rows, performance: performance.rows, mortality: mortality.rows, notes: notes.rows, expenses: expenses.rows, estimates: estimates.rows, sales: sales.rows, feedInventory: feedInventory.rows })
     }
 
     const { action, payload } = await request.json()

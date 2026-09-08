@@ -79,6 +79,20 @@ CREATE TABLE expenses (
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+CREATE TABLE feed_inventory (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    feed_name TEXT UNIQUE NOT NULL,
+    species livestock_species NOT NULL,
+    stage TEXT NOT NULL,
+    bags_on_hand NUMERIC(8, 2) NOT NULL DEFAULT 0 CHECK (bags_on_hand >= 0),
+    reorder_level_bags NUMERIC(8, 2) NOT NULL DEFAULT 0 CHECK (reorder_level_bags >= 0),
+    bag_weight_kg NUMERIC(8, 2) NOT NULL DEFAULT 50 CHECK (bag_weight_kg > 0),
+    unit_cost_php NUMERIC(10, 2) NOT NULL DEFAULT 0 CHECK (unit_cost_php >= 0),
+    supplier_id UUID REFERENCES suppliers(id),
+    updated_by UUID REFERENCES farm_users(id),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 CREATE TABLE batch_sale_estimates (
     batch_id UUID PRIMARY KEY REFERENCES batches(id) ON DELETE CASCADE,
     estimated_price_per_kg_php NUMERIC(10, 2) NOT NULL CHECK (estimated_price_per_kg_php >= 0),
@@ -104,3 +118,4 @@ CREATE INDEX weekly_performance_batch_week_idx ON weekly_performance (batch_id, 
 CREATE INDEX mortality_records_batch_date_idx ON mortality_records (batch_id, loss_date);
 CREATE INDEX batch_notes_batch_date_idx ON batch_notes (batch_id, note_date);
 CREATE INDEX expenses_batch_date_idx ON expenses (batch_id, expense_date);
+CREATE INDEX feed_inventory_species_stage_idx ON feed_inventory (species, stage);
